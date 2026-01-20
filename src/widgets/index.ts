@@ -52,3 +52,35 @@ export type { TreeProps, TreeWidgetNode, TreeWidgetNode as TreeNode } from './tr
 // Tabs
 export { tabs } from './tabs'
 export type { TabsProps, TabsNode } from './tabs'
+
+// Modal/Dialog
+export { modal, alertDialog, confirmDialog, inputDialog } from './modal'
+export type { ModalProps, ModalNode, ModalButton } from './modal'
+
+// SplitPane
+export { splitpane } from './splitpane'
+export type { SplitPaneProps, SplitPaneNode } from './splitpane'
+
+// ContextMenu
+export { contextmenu } from './contextmenu'
+export type { ContextMenuProps, ContextMenuNode, MenuItem } from './contextmenu'
+
+// CommandPalette
+export { commandpalette } from './commandpalette'
+export type { CommandPaletteProps, CommandPaletteNode, CommandItem } from './commandpalette'
+
+// Toast/Notification
+export { toast } from './toast'
+export type { ToastProps, ToastNode, ToastMessage, ToastType, ToastPosition } from './toast'
+
+// Button
+export { button } from './button'
+export type { ButtonProps, ButtonNode, ButtonVariant, ButtonSize } from './button'
+
+// List with virtual scroll
+export { list } from './list'
+export type { ListProps, ListNode, ListItem } from './list'
+
+// Scrollbar
+export { scrollbar } from './scrollbar'
+export type { ScrollbarProps, ScrollbarNode, ScrollbarOrientation } from './scrollbar'
