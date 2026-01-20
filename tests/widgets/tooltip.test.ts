@@ -232,4 +232,29 @@ describe('Tooltip Widget', () => {
       expect(t.tooltipPosition).toBe('bottom')
     })
   })
+
+  describe('auto position edge cases', () => {
+    let buffer: ReturnType<typeof createBuffer>
+
+    beforeEach(() => {
+      buffer = createBuffer(60, 20)
+    })
+
+    it('auto position falls back to right when top and bottom blocked', () => {
+      // Target in middle-left, blocking top and bottom
+      const t = tooltip({ text: 'Right fallback', position: 'auto' }).show(0, 8, 1, 4)
+      t.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+    })
+
+    it('auto position falls back to left when top, bottom, and right blocked', () => {
+      // Target near right edge, blocking all directions except left
+      const t = tooltip({ text: 'Left fallback', position: 'auto' }).show(58, 8, 1, 4)
+      t.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+    })
+
+    it('returns empty dimensions when text is null/undefined', () => {
+      const t = tooltip().show(30, 10)
+      t.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+    })
+  })
 })

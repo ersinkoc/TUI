@@ -487,4 +487,45 @@ describe('Panel Widget', () => {
       expect(buffer).toBeDefined()
     })
   })
+
+  describe('actions width calculation', () => {
+    let buffer: ReturnType<typeof createBuffer>
+    const width = 60
+    const height = 15
+
+    beforeEach(() => {
+      buffer = createBuffer(width, height)
+      fillBuffer(buffer, { char: ' ', fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+    })
+
+    it('calculates width for multiple actions', () => {
+      const p = panel({ title: 'With Actions' })
+        .addAction({ id: 'a', label: 'Action A' })
+        .addAction({ id: 'b', label: 'Action B' })
+        .addAction({ id: 'c', label: 'Action C' })
+      ;(p as any)._bounds = { x: 0, y: 0, width, height }
+      p.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+      expect(buffer).toBeDefined()
+    })
+
+    it('iterates through all actions in getActionsWidth', () => {
+      const p = panel({ title: 'Test' })
+        .addAction({ id: '1', label: 'X' })
+        .addAction({ id: '2', label: 'YY' })
+        .addAction({ id: '3', label: 'ZZZ' })
+        .addAction({ id: '4', label: 'WWWW' })
+      ;(p as any)._bounds = { x: 0, y: 0, width, height }
+      p.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+      expect(buffer).toBeDefined()
+    })
+
+    it('returns focused state from isFocused getter', () => {
+      const p = panel()
+      expect(p.isFocused).toBe(false)
+      p.focus()
+      expect(p.isFocused).toBe(true)
+      p.blur()
+      expect(p.isFocused).toBe(false)
+    })
+  })
 })

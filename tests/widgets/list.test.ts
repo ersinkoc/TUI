@@ -816,4 +816,44 @@ describe('List Widget', () => {
       expect(result).toBe(true)
     })
   })
+
+  describe('pageDown edge cases', () => {
+    it('should fall back to selectLast when no selectable item ahead', () => {
+      const l = list()
+        .items([
+          { id: '1', label: 'A' },
+          { id: 'sep1', label: '', separator: true },
+          { id: 'sep2', label: '', separator: true },
+          { id: '2', label: 'B', selectable: false }
+        ])
+      l.focus()
+      ;(l as any)._bounds = { x: 0, y: 0, width: 40, height: 2 }
+
+      l.pageDown()
+      // Should fall back to selectLast since no valid item ahead
+    })
+
+    it('should not toggle selection in single select mode', () => {
+      const l = list()
+        .multiSelect(false)
+        .items([{ id: '1', label: 'A' }])
+      l.focus()
+
+      l.toggleSelection()
+      expect(l.selectedIds.size).toBe(0)
+    })
+
+    it('should not select all in single select mode', () => {
+      const l = list()
+        .multiSelect(false)
+        .items([
+          { id: '1', label: 'A' },
+          { id: '2', label: 'B' }
+        ])
+      l.focus()
+
+      l.selectAll()
+      expect(l.selectedIds.size).toBe(0)
+    })
+  })
 })

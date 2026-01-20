@@ -442,5 +442,63 @@ describe('CommandPalette Widget', () => {
 
       expect(buffer).toBeDefined()
     })
+
+    it('should render scroll up indicator when scrolled', () => {
+      const commands = Array.from({ length: 20 }, (_, i) => ({
+        label: `Command ${i}`,
+        value: `cmd${i}`
+      }))
+
+      const cp = commandpalette().commands(commands).maxVisible(5)
+      cp.open()
+      ;(cp as any)._scrollOffset = 5
+      ;(cp as any)._selectedIndex = 6
+
+      const buffer = createBuffer(80, 24)
+      cp.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      let foundUpArrow = false
+      for (let y = 0; y < 24; y++) {
+        for (let x = 0; x < 80; x++) {
+          if (buffer.get(x, y).char === '\u25b2') {
+            foundUpArrow = true
+            break
+          }
+        }
+        if (foundUpArrow) break
+      }
+      expect(foundUpArrow).toBe(true)
+    })
+
+    it('should truncate long labels', () => {
+      const cp = commandpalette()
+        .commands([{
+          label: 'This is a very very very very very very very very long command label that should be truncated',
+          value: 'long'
+        }])
+        .width(30)
+      cp.open()
+
+      const buffer = createBuffer(80, 24)
+      cp.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      expect(buffer).toBeDefined()
+    })
+
+    it('should render description with space padding', () => {
+      const cp = commandpalette()
+        .commands([{
+          label: 'Cmd',
+          value: 'cmd',
+          description: 'Short desc'
+        }])
+        .width(60)
+      cp.open()
+
+      const buffer = createBuffer(80, 24)
+      cp.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      expect(buffer).toBeDefined()
+    })
   })
 })

@@ -786,5 +786,72 @@ describe('Kanban Widget', () => {
 
       expect(buffer.get(0, 1)).toBeDefined()
     })
+
+    it('renders overflow indicator with plus sign', () => {
+      const columns: KanbanColumn[] = [{
+        id: 'col',
+        title: 'Cards',
+        cards: Array.from({ length: 20 }, (_, i) => ({
+          id: `card${i}`,
+          title: `Card ${i}`
+        }))
+      }]
+      const kb = kanban({ columns, cardHeight: 2 })
+      ;(kb as any)._bounds = { x: 0, y: 0, width: 25, height: 6 }
+      kb.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      // Should show overflow text like "+18 more"
+      let foundPlus = false
+      for (let x = 0; x < 25; x++) {
+        if (buffer.get(x, 5).char === '+') {
+          foundPlus = true
+          break
+        }
+      }
+      expect(foundPlus).toBe(true)
+    })
+
+    it('renders unselected card with background color', () => {
+      const columns: KanbanColumn[] = [{
+        id: 'col',
+        title: 'Column',
+        cards: [{ id: 'c1', title: 'Card 1' }]
+      }]
+      const kb = kanban({ columns, cardHeight: 3 })
+      ;(kb as any)._bounds = { x: 0, y: 0, width: 30, height: 10 }
+      kb.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      // Unselected card should be rendered with bg 235
+      const cell = buffer.get(2, 1)
+      expect(cell.bg).toBe(235)
+    })
+
+    it('renders column with custom color', () => {
+      const columns: KanbanColumn[] = [{
+        id: 'col',
+        title: 'Colored Column',
+        color: 196,
+        cards: [{ id: 'c1', title: 'Card 1' }]
+      }]
+      const kb = kanban({ columns, cardHeight: 3 })
+      ;(kb as any)._bounds = { x: 0, y: 0, width: 30, height: 10 }
+      kb.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      // Header should use column color
+      expect(buffer.get(0, 0).fg).toBe(196)
+    })
+
+    it('renders card without priority indicator', () => {
+      const columns: KanbanColumn[] = [{
+        id: 'col',
+        title: 'Column',
+        cards: [{ id: 'c1', title: 'No Priority Card' }]
+      }]
+      const kb = kanban({ columns, cardHeight: 3, showPriority: false })
+      ;(kb as any)._bounds = { x: 0, y: 0, width: 30, height: 10 }
+      kb.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      expect(buffer.get(0, 1)).toBeDefined()
+    })
   })
 })

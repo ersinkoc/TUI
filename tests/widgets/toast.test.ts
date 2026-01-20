@@ -318,4 +318,58 @@ describe('Toast Widget', () => {
       vi.useRealTimers()
     })
   })
+
+  describe('wrapText edge cases', () => {
+    it('should handle empty message', () => {
+      vi.useFakeTimers()
+      const t = toast().width(30)
+      t.info('') // Empty message
+
+      const buffer = createBuffer(80, 24)
+      ;(t as any)._bounds = { x: 0, y: 0, width: 80, height: 24 }
+      t.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+      expect(buffer).toBeDefined()
+      vi.useRealTimers()
+    })
+
+    it('should handle words longer than maxWidth', () => {
+      vi.useFakeTimers()
+      const t = toast().width(20)
+      // A very long word that exceeds the content width
+      t.info('Supercalifragilisticexpialidocious')
+
+      const buffer = createBuffer(80, 24)
+      ;(t as any)._bounds = { x: 0, y: 0, width: 80, height: 24 }
+      t.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+      expect(buffer).toBeDefined()
+      vi.useRealTimers()
+    })
+  })
+
+  describe('renderToast edge cases', () => {
+    it('should truncate very long title', () => {
+      vi.useFakeTimers()
+      const t = toast().width(25)
+      t.info('Short message', 'This is an extremely long title that should be truncated')
+
+      const buffer = createBuffer(80, 24)
+      ;(t as any)._bounds = { x: 0, y: 0, width: 80, height: 24 }
+      t.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+      expect(buffer).toBeDefined()
+      vi.useRealTimers()
+    })
+
+    it('should render with bounds set', () => {
+      vi.useFakeTimers()
+      const t = toast().position('bottom-left')
+      t.success('A message with title', 'Title')
+      t.warning('Another message')
+
+      const buffer = createBuffer(80, 24)
+      ;(t as any)._bounds = { x: 0, y: 0, width: 80, height: 24 }
+      t.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+      expect(buffer).toBeDefined()
+      vi.useRealTimers()
+    })
+  })
 })

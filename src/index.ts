@@ -187,6 +187,94 @@ export type {
   FileSortOrder
 } from './widgets'
 
+// Menubar
+export { menubar } from './widgets'
+export type { MenubarProps, MenubarNode, MenubarMenu, MenubarItem } from './widgets'
+
+// Statusbar
+export { statusbar } from './widgets'
+export type { StatusbarProps, StatusbarNode, StatusItem, StatusItemAlign } from './widgets'
+
+// Breadcrumb
+export { breadcrumb } from './widgets'
+export type { BreadcrumbProps, BreadcrumbNode, BreadcrumbItem } from './widgets'
+
+// Panel
+export { panel } from './widgets'
+export type { PanelProps, PanelNode, PanelAction, PanelTitleAlign } from './widgets'
+
+// Badge/Tag
+export { badge, tag } from './widgets'
+export type { BadgeProps, BadgeNode, BadgeVariant, BadgeSize, BadgeShape } from './widgets'
+
+// Tooltip
+export { tooltip } from './widgets'
+export type { TooltipProps, TooltipNode, TooltipPosition } from './widgets'
+
+// Drawer/Sidebar
+export { drawer } from './widgets'
+export type { DrawerProps, DrawerNode, DrawerItem, DrawerPosition } from './widgets'
+
+// DataGrid (advanced table)
+export { datagrid } from './widgets'
+export type { DataGridProps, DataGridNode, DataGridColumn, SortDirection, ColumnAlign } from './widgets'
+
+// Timeline
+export { timeline } from './widgets'
+export type { TimelineProps, TimelineNode, TimelineItem, TimelineStatus, TimelineOrientation } from './widgets'
+
+// CodeViewer
+export { codeviewer } from './widgets'
+export type { CodeViewerProps, CodeViewerNode, CodeLanguage, LineHighlight } from './widgets'
+
+// Pagination
+export { pagination } from './widgets'
+export type { PaginationProps, PaginationNode, PaginationStyle, PageInfo } from './widgets'
+
+// SearchInput
+export { searchinput } from './widgets'
+export type { SearchInputProps, SearchInputNode, SearchSuggestion } from './widgets'
+
+// DiffViewer
+export { diffviewer } from './widgets'
+export type { DiffViewerProps, DiffViewerNode, DiffMode, DiffLineType, DiffLine, DiffHunk } from './widgets'
+
+// LogViewer
+export { logviewer } from './widgets'
+export type { LogViewerProps, LogViewerNode, LogLevel, LogEntry } from './widgets'
+
+// Image (ASCII art)
+export { image } from './widgets'
+export type { ImageProps, ImageNode, ImageData, Pixel, AsciiCharset, DitherAlgorithm, ScaleMode } from './widgets'
+
+// MarkdownViewer
+export { markdownviewer } from './widgets'
+export type { MarkdownViewerProps, MarkdownViewerNode } from './widgets'
+
+// JSONViewer
+export { jsonviewer } from './widgets'
+export type { JsonViewerProps, JsonViewerNode, JsonViewerColors } from './widgets'
+
+// ColorPicker
+export { colorpicker } from './widgets'
+export type { ColorPickerProps, ColorPickerNode, ColorPickerMode, RgbColor } from './widgets'
+
+// Heatmap
+export { heatmap } from './widgets'
+export type { HeatmapProps, HeatmapNode, HeatmapColorScale } from './widgets'
+
+// Kanban
+export { kanban } from './widgets'
+export type { KanbanProps, KanbanNode, KanbanColumn, KanbanCard } from './widgets'
+
+// Terminal
+export { terminal } from './widgets'
+export type { TerminalProps, TerminalNode, TerminalLine } from './widgets'
+
+// Stopwatch
+export { stopwatch } from './widgets'
+export type { StopwatchProps, StopwatchNode, StopwatchMode, LapTime } from './widgets'
+
 // ============================================================
 // Theme System
 // ============================================================
