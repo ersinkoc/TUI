@@ -99,6 +99,131 @@ export type { TreeProps, TreeNode } from './widgets'
 export { tabs } from './widgets'
 export type { TabsProps, TabsNode } from './widgets'
 
+// Modal & Dialog
+export { modal, alertDialog, confirmDialog, inputDialog } from './widgets'
+export type { ModalProps, ModalNode, ModalButton } from './widgets'
+
+// SplitPane
+export { splitpane } from './widgets'
+export type { SplitPaneProps, SplitPaneNode } from './widgets'
+
+// ContextMenu
+export { contextmenu } from './widgets'
+export type { ContextMenuProps, ContextMenuNode, MenuItem } from './widgets'
+
+// CommandPalette
+export { commandpalette } from './widgets'
+export type { CommandPaletteProps, CommandPaletteNode, CommandItem } from './widgets'
+
+// Toast/Notification
+export { toast } from './widgets'
+export type { ToastProps, ToastNode, ToastMessage, ToastType, ToastPosition } from './widgets'
+
+// Button
+export { button } from './widgets'
+export type { ButtonProps, ButtonNode, ButtonVariant, ButtonSize } from './widgets'
+
+// List with virtual scroll
+export { list } from './widgets'
+export type { ListProps, ListNode, ListItem } from './widgets'
+
+// Scrollbar
+export { scrollbar } from './widgets'
+export type { ScrollbarProps, ScrollbarNode, ScrollbarOrientation } from './widgets'
+
+// Grid layout
+export { grid } from './widgets'
+export type { GridProps, GridNode, GridCell, GridTemplate } from './widgets'
+
+// Slider/Range
+export { slider } from './widgets'
+export type { SliderProps, SliderNode } from './widgets'
+
+// Calendar/DatePicker
+export { calendar } from './widgets'
+export type { CalendarProps, CalendarNode } from './widgets'
+
+// Accordion
+export { accordion } from './widgets'
+export type { AccordionProps, AccordionNode, AccordionPanel } from './widgets'
+
+// Charts
+export { barchart, sparkline, gauge } from './widgets'
+export type {
+  BarChartProps,
+  BarChartNode,
+  BarChartDataPoint,
+  SparklineProps,
+  SparklineNode,
+  GaugeProps,
+  GaugeNode
+} from './widgets'
+
+// Wizard/Stepper
+export { wizard } from './widgets'
+export type { WizardProps, WizardNode, WizardStep, WizardStepStatus } from './widgets'
+
+// Form with validation
+export { form } from './widgets'
+export type {
+  FormProps,
+  FormNode,
+  FormField,
+  FormState,
+  FieldState,
+  ValidationResult,
+  Validator,
+  ValidatorConfig,
+  BuiltinValidator
+} from './widgets'
+
+// File Browser
+export { filebrowser } from './widgets'
+export type {
+  FileBrowserProps,
+  FileBrowserNode,
+  FileEntry,
+  FileSortBy,
+  FileSortOrder
+} from './widgets'
+
+// ============================================================
+// Theme System
+// ============================================================
+
+export {
+  // Theme manager
+  themeManager,
+  ThemeManager,
+  getCurrentTheme,
+  setTheme,
+  createTheme,
+  onThemeChange,
+
+  // Built-in themes
+  defaultTheme,
+  lightTheme,
+  draculaTheme,
+  nordTheme,
+  monokaiTheme,
+  gruvboxTheme,
+  solarizedDarkTheme,
+  tokyoNightTheme,
+  catppuccinMochaTheme,
+  themes,
+
+  // Utilities
+  themedStyle,
+  getComponentTheme
+} from './theme'
+
+export type {
+  ThemeColor,
+  ThemeComponents,
+  PartialTheme,
+  ThemeChangeListener
+} from './theme'
+
 // ============================================================
 // Core Systems
 // ============================================================

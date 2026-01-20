@@ -254,5 +254,193 @@ describe('SplitPane Widget', () => {
 
       expect(buffer).toBeDefined()
     })
+
+    it('should render with showDivider false', () => {
+      const sp = splitpane()
+        .direction('horizontal')
+        .ratio(0.5)
+        .showDivider(false)
+        .first(text('Left'))
+        .second(text('Right'))
+      ;(sp as any)._bounds = { x: 0, y: 0, width: 80, height: 20 }
+
+      const buffer = createBuffer(80, 24)
+      sp.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      expect(buffer).toBeDefined()
+    })
+
+    it('should render vertical with showDivider false', () => {
+      const sp = splitpane()
+        .direction('vertical')
+        .ratio(0.5)
+        .showDivider(false)
+        .first(text('Top'))
+        .second(text('Bottom'))
+      ;(sp as any)._bounds = { x: 0, y: 0, width: 80, height: 40 }
+
+      const buffer = createBuffer(80, 50)
+      sp.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      expect(buffer).toBeDefined()
+    })
+
+    it('should render horizontal divider with dragging style', () => {
+      const sp = splitpane()
+        .direction('horizontal')
+        .ratio(0.5)
+        .first(text('Left'))
+        .second(text('Right'))
+      ;(sp as any)._bounds = { x: 0, y: 0, width: 80, height: 20 }
+      ;(sp as any)._isDragging = true
+
+      const buffer = createBuffer(80, 24)
+      sp.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      // Divider should use bold character when dragging
+      expect(buffer).toBeDefined()
+    })
+
+    it('should render vertical divider with dragging style', () => {
+      const sp = splitpane()
+        .direction('vertical')
+        .ratio(0.5)
+        .first(text('Top'))
+        .second(text('Bottom'))
+      ;(sp as any)._bounds = { x: 0, y: 0, width: 80, height: 40 }
+      ;(sp as any)._isDragging = true
+
+      const buffer = createBuffer(80, 50)
+      sp.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      expect(buffer).toBeDefined()
+    })
+  })
+
+  describe('props initialization', () => {
+    it('should accept showDivider prop', () => {
+      const sp = splitpane({ showDivider: false })
+      expect(sp).toBeDefined()
+    })
+
+    it('should accept dividerSize prop', () => {
+      const sp = splitpane({ dividerSize: 3 })
+      expect(sp).toBeDefined()
+    })
+
+    it('should accept resizable prop', () => {
+      const sp = splitpane({ resizable: false })
+      expect(sp).toBeDefined()
+    })
+
+    it('should accept all props together', () => {
+      const sp = splitpane({
+        direction: 'vertical',
+        ratio: 0.3,
+        minFirst: 10,
+        minSecond: 15,
+        showDivider: true,
+        dividerSize: 2,
+        resizable: true
+      })
+      expect(sp.currentRatio).toBe(0.3)
+    })
+
+    it('should clamp ratio in props', () => {
+      const sp = splitpane({ ratio: 2.0 })
+      expect(sp.currentRatio).toBe(1.0)
+    })
+  })
+
+  describe('pane getters', () => {
+    it('should return firstPane', () => {
+      const content = text('First')
+      const sp = splitpane().first(content)
+      expect(sp.firstPane).toBe(content)
+    })
+
+    it('should return secondPane', () => {
+      const content = text('Second')
+      const sp = splitpane().second(content)
+      expect(sp.secondPane).toBe(content)
+    })
+
+    it('should return null when no panes set', () => {
+      const sp = splitpane()
+      expect(sp.firstPane).toBeNull()
+      expect(sp.secondPane).toBeNull()
+    })
+  })
+
+  describe('resize event', () => {
+    it('should emit resize event when ratio changes', () => {
+      const handler = vi.fn()
+      const sp = splitpane().onResize(handler)
+
+      sp.ratio(0.7)
+      expect(handler).toHaveBeenCalledWith(0.7)
+    })
+
+    it('should emit resize event on drag', () => {
+      const handler = vi.fn()
+      const sp = splitpane()
+        .direction('horizontal')
+        .ratio(0.5)
+        .minFirst(5)
+        .minSecond(5)
+        .onResize(handler)
+      ;(sp as any)._bounds = { x: 0, y: 0, width: 100, height: 20 }
+      ;(sp as any)._isDragging = true
+
+      handler.mockClear()
+      ;(sp as any).handleMouse(70, 10, 'move')
+      expect(handler).toHaveBeenCalled()
+    })
+  })
+
+  describe('mouse handling edge cases', () => {
+    it('should not start dragging when click is not on divider for vertical', () => {
+      const sp = splitpane()
+        .direction('vertical')
+        .ratio(0.5)
+      ;(sp as any)._bounds = { x: 0, y: 0, width: 100, height: 40 }
+
+      // Click far from divider (divider is at y ~19)
+      const result = (sp as any).handleMouse(50, 5, 'press')
+      expect(result).toBe(false)
+    })
+
+    it('should not handle release when not dragging', () => {
+      const sp = splitpane()
+      ;(sp as any)._bounds = { x: 0, y: 0, width: 100, height: 20 }
+      ;(sp as any)._isDragging = false
+
+      const result = (sp as any).handleMouse(50, 10, 'release')
+      expect(result).toBe(false)
+    })
+
+    it('should not handle move when not dragging', () => {
+      const sp = splitpane()
+      ;(sp as any)._bounds = { x: 0, y: 0, width: 100, height: 20 }
+      ;(sp as any)._isDragging = false
+
+      const result = (sp as any).handleMouse(50, 10, 'move')
+      expect(result).toBe(false)
+    })
+
+    it('should respect minSecond on vertical drag', () => {
+      const sp = splitpane()
+        .direction('vertical')
+        .ratio(0.5)
+        .minFirst(5)
+        .minSecond(30)
+      ;(sp as any)._bounds = { x: 0, y: 0, width: 100, height: 40 }
+      ;(sp as any)._isDragging = true
+
+      // Try to drag to bottom (would violate minSecond)
+      ;(sp as any).handleMouse(50, 35, 'move')
+      // Should be clamped
+      expect(sp.currentRatio).toBeLessThanOrEqual(1 - 30 / 39)
+    })
   })
 })

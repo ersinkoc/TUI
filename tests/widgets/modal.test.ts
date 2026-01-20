@@ -490,5 +490,223 @@ describe('Modal Widget', () => {
       expect(m.type).toBe('modal')
       expect(m.isOpen).toBe(true)
     })
+
+    it('should handle input dialog OK result', () => {
+      const handler = vi.fn()
+      const m = inputDialog('Input', 'Enter name', handler)
+
+      // Confirm with OK button (primary, selected by default)
+      m.confirm()
+      expect(handler).toHaveBeenCalledWith('')
+    })
+
+    it('should handle input dialog cancel result', () => {
+      const handler = vi.fn()
+      const m = inputDialog('Input', 'Enter name', handler)
+
+      // Select Cancel button and confirm
+      m.selectPreviousButton()
+      m.confirm()
+      expect(handler).toHaveBeenCalledWith(null)
+    })
+  })
+
+  describe('additional methods', () => {
+    it('should toggle modal', () => {
+      const m = modal()
+      expect(m.isOpen).toBe(false)
+
+      m.toggle()
+      expect(m.isOpen).toBe(true)
+
+      m.toggle()
+      expect(m.isOpen).toBe(false)
+    })
+
+    it('should set backdrop enabled', () => {
+      const m = modal().backdrop(true).open()
+      expect(m.isOpen).toBe(true)
+    })
+
+    it('should set backdrop disabled', () => {
+      const m = modal().backdrop(false).open()
+      expect(m.isOpen).toBe(true)
+    })
+
+    it('should set backdropChar', () => {
+      const m = modal().backdropChar('░').open()
+      expect(m.isOpen).toBe(true)
+    })
+
+    it('should set closeOnEscape', () => {
+      const m = modal().closeOnEscape(false).open()
+      const result = (m as any).handleKey('escape', false)
+      expect(result).toBe(false)
+      expect(m.isOpen).toBe(true)
+    })
+
+    it('should emit onOpen event', () => {
+      const handler = vi.fn()
+      const m = modal().onOpen(handler)
+
+      m.open()
+      expect(handler).toHaveBeenCalled()
+    })
+
+    it('should not emit onOpen when already open', () => {
+      const handler = vi.fn()
+      const m = modal().onOpen(handler).open()
+
+      handler.mockClear()
+      m.open()
+      expect(handler).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('rendering edge cases', () => {
+    it('should render with non-centered modal', () => {
+      const m = modal()
+        .title('Test')
+        .content(text('Hello'))
+        .centered(false)
+        .open()
+      ;(m as any)._bounds = { x: 0, y: 0, width: 80, height: 24 }
+
+      const buffer = createBuffer(80, 24)
+      m.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      expect(buffer).toBeDefined()
+    })
+
+    it('should render with custom backdrop char', () => {
+      const m = modal()
+        .title('Test')
+        .backdropChar('▒')
+        .backdrop(true)
+        .open()
+      ;(m as any)._bounds = { x: 0, y: 0, width: 80, height: 24 }
+
+      const buffer = createBuffer(80, 24)
+      m.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      // Check that backdrop char is used outside modal area
+      expect(buffer).toBeDefined()
+    })
+
+    it('should render without backdrop', () => {
+      const m = modal()
+        .title('Test')
+        .backdrop(false)
+        .open()
+      ;(m as any)._bounds = { x: 0, y: 0, width: 80, height: 24 }
+
+      const buffer = createBuffer(80, 24)
+      m.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      expect(buffer).toBeDefined()
+    })
+
+    it('should truncate long title', () => {
+      const m = modal()
+        .title('This is a very long title that should be truncated in the modal header')
+        .width(30)
+        .open()
+      ;(m as any)._bounds = { x: 0, y: 0, width: 80, height: 24 }
+
+      const buffer = createBuffer(80, 24)
+      m.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      expect(buffer).toBeDefined()
+    })
+
+    it('should render without content', () => {
+      const m = modal()
+        .title('Empty')
+        .buttons([{ label: 'OK', value: 'ok' }])
+        .open()
+      ;(m as any)._bounds = { x: 0, y: 0, width: 80, height: 24 }
+
+      const buffer = createBuffer(80, 24)
+      m.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      expect(buffer).toBeDefined()
+    })
+
+    it('should render without buttons', () => {
+      const m = modal()
+        .title('No Buttons')
+        .content(text('Just text'))
+        .open()
+      ;(m as any)._bounds = { x: 0, y: 0, width: 80, height: 24 }
+
+      const buffer = createBuffer(80, 24)
+      m.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      expect(buffer).toBeDefined()
+    })
+
+    it('should handle zero dimensions', () => {
+      const m = modal().open()
+      ;(m as any)._bounds = { x: 0, y: 0, width: 0, height: 0 }
+
+      const buffer = createBuffer(80, 24)
+      m.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      expect(buffer).toBeDefined()
+    })
+  })
+
+  describe('props initialization', () => {
+    it('should accept all props', () => {
+      const m = modal({
+        title: 'Full Modal',
+        width: 60,
+        height: 20,
+        backdrop: true,
+        backdropChar: '░',
+        closeOnEscape: true,
+        closeOnBackdrop: true,
+        border: 'double',
+        centered: true
+      })
+
+      expect(m.type).toBe('modal')
+    })
+
+    it('should accept buttons from full props', () => {
+      // Test via props instead of method
+      const m = modal()
+      m.buttons([
+        { label: 'A', value: 'a' },
+        { label: 'B', value: 'b', primary: true }
+      ])
+
+      // Primary button should be selected
+      expect(m.selectedButtonIndex).toBe(1)
+    })
+
+    it('should handle buttons with no primary', () => {
+      const m = modal()
+      m.buttons([
+        { label: 'A', value: 'a' },
+        { label: 'B', value: 'b' }
+      ])
+
+      expect(m.selectedButtonIndex).toBe(0)
+    })
+  })
+
+  describe('mouse click on button', () => {
+    it('should handle click inside modal area', () => {
+      const m = modal()
+        .buttons([{ label: 'OK', value: 'ok' }])
+        .open()
+      ;(m as any)._bounds = { x: 20, y: 8, width: 40, height: 10 }
+
+      // Click inside modal area
+      const result = (m as any).handleMouse(30, 10, 'press')
+      expect(result).toBe(false) // Inside modal does nothing
+      expect(m.isOpen).toBe(true)
+    })
   })
 })

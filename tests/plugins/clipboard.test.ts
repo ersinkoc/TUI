@@ -330,5 +330,5 @@ describe('readWithSystemTool', () => {
     const result = await readWithSystemTool()
     // Returns string if successful, null if command fails
     expect(result === null || typeof result === 'string').toBe(true)
-  })
+  }, 15000) // Increase timeout for system command
 })
