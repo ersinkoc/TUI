@@ -43,7 +43,19 @@
     "lint": "eslint src",
     "format": "prettier --write .",
     "typecheck": "tsc --noEmit",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "example": "tsx",
+    "example:hello": "tsx examples/01-hello-world.ts",
+    "example:box": "tsx examples/02-box-layout.ts",
+    "example:form": "tsx examples/03-form.ts",
+    "example:progress": "tsx examples/04-progress-spinner.ts",
+    "example:table": "tsx examples/05-table.ts",
+    "example:tree": "tsx examples/06-tree.ts",
+    "example:tabs": "tsx examples/07-tabs.ts",
+    "example:textarea": "tsx examples/08-textarea.ts",
+    "example:theming": "tsx examples/09-theming.ts",
+    "example:demo": "tsx examples/demo.ts",
+    "example:dashboard": "tsx examples/comprehensive-dashboard.ts"
   },
   "keywords": [
     "tui",
@@ -84,6 +96,7 @@
     "eslint": "^9.17.0",
     "prettier": "^3.4.0",
     "tsup": "^8.3.0",
+    "tsx": "^4.21.0",
     "typescript": "^5.7.0",
     "typescript-eslint": "^8.53.1",
     "vitest": "^2.1.0"
