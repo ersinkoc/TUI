@@ -1,0 +1,312 @@
+# @oxog/tui - Terminal User Interface Framework
+
+## Overview
+
+@oxog/tui is a TypeScript-first terminal user interface framework for Node.js with zero external dependencies (only @oxog/* packages). It follows a micro-kernel architecture with a plugin system.
+
+## Key Concepts
+
+### Architecture
+- Micro-kernel with plugin system
+- Differential rendering for performance
+- Flexbox-like layout engine
+- Builder pattern API with chainable methods
+
+### Core Components
+1. **Kernel**: Application factory (`tui()`)
+2. **Widgets**: UI components (box, text, input, etc.)
+3. **Plugins**: Modular functionality (renderer, layout, style, input)
+4. **Buffer**: Double-buffered rendering
+
+## Quick Start
+
+```typescript
+import { tui, box, text } from '@oxog/tui'
+import { standardPlugins } from '@oxog/tui/plugins'
+
+const app = tui({ plugins: standardPlugins() })
+app.mount(box().add(text('Hello!')))
+app.start()
+```
+
+## Widgets
+
+### Container Widgets
+
+#### box(props?)
+Container with flexbox layout.
+```typescript
+box()
+  .direction('row' | 'column')
+  .justify('start' | 'center' | 'end' | 'space-between')
+  .align('start' | 'center' | 'end' | 'stretch')
+  .padding(number | { top, right, bottom, left })
+  .gap(number)
+  .border(boolean)
+  .add(child)
+```
+
+#### tabs(props?)
+Tabbed container.
+```typescript
+tabs()
+  .tabs([{ label: string, content: Node }])
+  .position('top' | 'bottom')
+  .onChange(handler)
+```
+
+### Display Widgets
+
+#### text(content | props)
+Text display.
+```typescript
+text('Hello')
+  .fg('#color')
+  .bg('#color')
+  .bold(true)
+  .wrap(true)
+  .align('left' | 'center' | 'right')
+```
+
+#### progress(props?)
+Progress bar.
+```typescript
+progress()
+  .value(0-100)
+  .showPercent(true)
+  .filledChar('█')
+  .emptyChar('░')
+```
+
+#### spinner(props?)
+Loading spinner.
+```typescript
+spinner()
+  .style('dots' | 'line' | 'arc')
+  .label('Loading...')
+```
+
+### Input Widgets
+
+#### input(props?)
+Single-line text input.
+```typescript
+input()
+  .placeholder('Enter text')
+  .password(true)
+  .maxLength(number)
+  .onChange(handler)
+  .onSubmit(handler)
+```
+
+#### textarea(props?)
+Multi-line text input.
+```typescript
+textarea()
+  .wrap(true)
+  .showLineNumbers(true)
+  .onChange(handler)
+```
+
+#### select(props?)
+Selection list.
+```typescript
+select()
+  .items([{ label, value }])
+  .onChange(handler)
+```
+
+#### checkbox(props?)
+Toggle checkbox.
+```typescript
+checkbox()
+  .label('Accept terms')
+  .checked(false)
+  .onChange(handler)
+```
+
+### Data Widgets
+
+#### table(props?)
+Data table.
+```typescript
+table()
+  .columns([{ key, label, width }])
+  .data([{ key: value }])
+  .onChange(handler)
+```
+
+#### tree(props?)
+Tree view.
+```typescript
+tree()
+  .items([{ label, children? }])
+  .showGuides(true)
+  .onChange(handler)
+```
+
+## Plugins
+
+### Standard Plugin Set
+```typescript
+import { standardPlugins } from '@oxog/tui/plugins'
+// Includes: renderer, layout, style, screen, input, focus
+```
+
+### Available Plugins
+- `rendererPlugin()` - Differential rendering
+- `layoutPlugin()` - Flexbox layout
+- `stylePlugin({ theme })` - Theming
+- `inputPlugin({ bindings })` - Keyboard input
+- `mousePlugin()` - Mouse events
+- `focusPlugin()` - Focus management
+- `animationPlugin()` - Animations
+- `scrollPlugin()` - Scrollable content
+- `clipboardPlugin()` - Copy/paste
+- `screenPlugin()` - Screen management
+
+### Themes
+```typescript
+import { darkTheme, lightTheme, draculaTheme, nordTheme } from '@oxog/tui/plugins'
+```
+
+## Layout System
+
+### Dimensions
+- Fixed: `width(50)`
+- Percentage: `width('50%')`
+- Flex: `flex(1)`
+- Auto: `width('auto')`
+
+### Flexbox Properties
+- `direction('row' | 'column')`
+- `justify('start' | 'center' | 'end' | 'space-between' | 'space-around' | 'space-evenly')`
+- `align('start' | 'center' | 'end' | 'stretch')`
+- `gap(number)`
+- `flex(number)`
+
+### Spacing
+- `padding(number | { top, right, bottom, left })`
+- `margin(number | { top, right, bottom, left })`
+
+## Events
+
+### Keyboard
+```typescript
+app.on('key', (event: KeyEvent) => {
+  event.key   // 'a', 'Enter', 'ArrowUp'
+  event.ctrl  // boolean
+  event.alt   // boolean
+  event.shift // boolean
+})
+```
+
+### Mouse
+```typescript
+app.mouse.on((event: MouseEvent) => {
+  event.action // 'click', 'scroll', 'move'
+  event.x, event.y
+  event.button // 'left', 'right', 'middle'
+})
+```
+
+## Styling
+
+### Colors
+- Hex: `'#ff0000'`
+- RGB: `'rgb(255, 0, 0)'`
+- Named: `'red'`, `'blue'`, etc.
+- Theme: `'primary'`, `'secondary'`, `'accent'`
+
+### Text Attributes
+```typescript
+.bold(true)
+.italic(true)
+.underline(true)
+.dim(true)
+```
+
+## Type Definitions
+
+```typescript
+// Core types
+type Dimension = number | string | 'auto'
+type Color = number | string
+type FlexDirection = 'row' | 'column' | 'row-reverse' | 'column-reverse'
+type FlexJustify = 'start' | 'end' | 'center' | 'space-between' | 'space-around' | 'space-evenly'
+type FlexAlign = 'start' | 'end' | 'center' | 'stretch'
+
+// Event types
+interface KeyEvent {
+  key: string
+  ctrl: boolean
+  alt: boolean
+  shift: boolean
+  raw: string
+}
+
+interface MouseEvent {
+  action: 'click' | 'scroll' | 'move'
+  button: 'left' | 'right' | 'middle'
+  x: number
+  y: number
+  scrollDelta?: number
+}
+```
+
+## Common Patterns
+
+### Form Pattern
+```typescript
+const form = box().direction('column').gap(1)
+  .add(text('Name:'))
+  .add(input().onChange(v => name = v))
+  .add(text('Email:'))
+  .add(input().onChange(v => email = v))
+  .add(checkbox().label('Subscribe'))
+```
+
+### Dashboard Pattern
+```typescript
+const dashboard = box().direction('column')
+  .add(box().height(3).add(text('Header')))
+  .add(box().flex(1).direction('row')
+    .add(box().width(20).add(menu))
+    .add(box().flex(1).add(content)))
+  .add(box().height(1).add(text('Footer')))
+```
+
+### List Navigation Pattern
+```typescript
+let selected = 0
+const items = ['A', 'B', 'C']
+app.on('key', (e) => {
+  if (e.key === 'ArrowUp') selected = Math.max(0, selected - 1)
+  if (e.key === 'ArrowDown') selected = Math.min(items.length - 1, selected + 1)
+  app.refresh()
+})
+```
+
+## Error Handling
+
+```typescript
+import { TUIError, PluginError, LayoutError, RenderError } from '@oxog/tui'
+
+try {
+  app.start()
+} catch (e) {
+  if (e instanceof PluginError) {
+    console.error('Plugin failed:', e.message)
+  }
+}
+```
+
+## Best Practices
+
+1. Use `standardPlugins()` for typical applications
+2. Call `app.refresh()` after programmatic state changes
+3. Use `flex(1)` for flexible sizing
+4. Handle `ctrl+c` for graceful exit
+5. Use theming for consistent colors
+6. Prefer widget events over global key handling
+7. Use `markDirty()` in custom widgets
