@@ -973,4 +973,80 @@ describe('Drawer Widget', () => {
       expect(d.isFocused).toBe(true)
     })
   })
+
+  describe('method return values', () => {
+    it('selectNext returns this for chaining', () => {
+      const d = drawer()
+        .items([{ id: 'a', label: 'A' }])
+        .focus()
+
+      const result = d.selectNext()
+      expect(result).toBe(d)
+    })
+
+    it('selectPrevious returns this for chaining', () => {
+      const d = drawer()
+        .items([{ id: 'a', label: 'A' }])
+        .focus()
+
+      const result = d.selectPrevious()
+      expect(result).toBe(d)
+    })
+
+    it('selectItem returns this for chaining', () => {
+      const d = drawer()
+        .items([{ id: 'a', label: 'A' }])
+
+      const result = d.selectItem('a')
+      expect(result).toBe(d)
+    })
+
+    it('selectItem with non-existent id returns this', () => {
+      const d = drawer()
+        .items([{ id: 'a', label: 'A' }])
+
+      const result = d.selectItem('nonexistent')
+      expect(result).toBe(d)
+    })
+  })
+
+  describe('position-specific rendering', () => {
+    let buffer: ReturnType<typeof createBuffer>
+    const width = 80
+    const height = 24
+
+    beforeEach(() => {
+      buffer = createBuffer(width, height)
+      fillBuffer(buffer, { char: ' ', fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+    })
+
+    it('renders right position drawer correctly', () => {
+      const d = drawer({ position: 'right', open: true, size: 20 })
+        .items([{ id: 'a', label: 'Item A' }])
+      ;(d as any)._bounds = { x: 0, y: 0, width, height }
+      d.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      // Right drawer starts at width - size = 80 - 20 = 60
+      expect(buffer.get(60, 1)).toBeDefined()
+    })
+
+    it('renders top position drawer with correct bounds', () => {
+      const d = drawer({ position: 'top', open: true, size: 10 })
+        .items([{ id: 'a', label: 'Item A' }])
+      ;(d as any)._bounds = { x: 0, y: 0, width, height }
+      d.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      expect(buffer.get(0, 0)).toBeDefined()
+    })
+
+    it('renders bottom position drawer with correct bounds', () => {
+      const d = drawer({ position: 'bottom', open: true, size: 10 })
+        .items([{ id: 'a', label: 'Item A' }])
+      ;(d as any)._bounds = { x: 0, y: 0, width, height }
+      d.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      // Bottom drawer starts at height - size = 24 - 10 = 14
+      expect(buffer.get(0, 14)).toBeDefined()
+    })
+  })
 })

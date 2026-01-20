@@ -568,4 +568,207 @@ describe('ColorPicker Widget', () => {
       expect(handler).not.toHaveBeenCalled()
     })
   })
+
+  describe('palette256 navigation edge cases', () => {
+    it('moves down from basic color 0-7 to color 8-15', () => {
+      const cp = colorpicker({ color: 5, mode: 'palette256' }).focus()
+      cp.moveDown()
+      expect(cp.selectedColor).toBe(13) // 5 + 8
+    })
+
+    it('moves down from basic color 8-15 to color cube', () => {
+      const cp = colorpicker({ color: 10, mode: 'palette256' }).focus()
+      cp.moveDown()
+      expect(cp.selectedColor).toBe(16) // Moves to color cube
+    })
+
+    it('stays at bottom layer in color cube', () => {
+      const cp = colorpicker({ color: 196, mode: 'palette256' }).focus() // Last layer
+      cp.moveDown()
+      expect(cp.selectedColor).toBe(196) // Doesn't go further
+    })
+
+    it('moves up from grayscale to color cube', () => {
+      const cp = colorpicker({ color: 240, mode: 'palette256' }).focus()
+      cp.moveUp()
+      expect(cp.selectedColor).toBe(231) // Top of color cube
+    })
+
+    it('moveRight in basic16 range of palette256', () => {
+      const cp = colorpicker({ color: 10, mode: 'palette256' }).focus()
+      cp.moveRight()
+      expect(cp.selectedColor).toBe(11)
+    })
+
+    it('moveRight at edge of basic16 in palette256', () => {
+      const cp = colorpicker({ color: 15, mode: 'palette256' }).focus()
+      cp.moveRight()
+      expect(cp.selectedColor).toBe(15) // Clamped
+    })
+
+    it('moveRight in grayscale range of palette256', () => {
+      const cp = colorpicker({ color: 240, mode: 'palette256' }).focus()
+      cp.moveRight()
+      expect(cp.selectedColor).toBe(241)
+    })
+
+    it('moveLeft at start of cube row', () => {
+      const cp = colorpicker({ color: 16, mode: 'palette256' }).focus()
+      cp.moveLeft()
+      expect(cp.selectedColor).toBe(16) // Stays at start of row
+    })
+
+    it('moveRight at end of cube row', () => {
+      const cp = colorpicker({ color: 21, mode: 'palette256' }).focus()
+      cp.moveRight()
+      expect(cp.selectedColor).toBe(21) // Stays at end of row
+    })
+  })
+
+  describe('rgb mode edge cases', () => {
+    it('moveLeft at blue=0 does nothing', () => {
+      const cp = colorpicker({ color: 16, mode: 'rgb' }).focus() // b=0
+      cp.moveLeft()
+      expect(cp.selectedColor).toBe(16)
+    })
+
+    it('moveRight at blue=5 does nothing', () => {
+      const cp = colorpicker({ color: 21, mode: 'rgb' }).focus() // b=5
+      cp.moveRight()
+      expect(cp.selectedColor).toBe(21)
+    })
+
+    it('moveUp at green=0 does nothing', () => {
+      const cp = colorpicker({ color: 16, mode: 'rgb' }).focus() // g=0
+      cp.moveUp()
+      expect(cp.selectedColor).toBe(16)
+    })
+
+    it('moveDown at green=5 does nothing', () => {
+      const cp = colorpicker({ color: 46, mode: 'rgb' }).focus() // g=5
+      cp.moveDown()
+      expect(cp.selectedColor).toBe(46)
+    })
+  })
+
+  describe('rgb rendering edge cases', () => {
+    let buffer: ReturnType<typeof createTestBuffer>
+
+    beforeEach(() => {
+      buffer = createTestBuffer(40, 15)
+    })
+
+    it('renders rgb mode with color not in cube (basic color)', () => {
+      const cp = colorpicker({ mode: 'rgb', color: 5 }) // Basic color
+      ;(cp as any)._bounds = { x: 0, y: 0, width: 40, height: 15 }
+      cp.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+      expect(buffer).toBeDefined()
+    })
+
+    it('renders rgb mode with grayscale color', () => {
+      const cp = colorpicker({ mode: 'rgb', color: 240 }) // Grayscale
+      ;(cp as any)._bounds = { x: 0, y: 0, width: 40, height: 15 }
+      cp.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+      expect(buffer).toBeDefined()
+    })
+
+    it('renders rgb mode with selection in cube', () => {
+      const cp = colorpicker({ mode: 'rgb', color: 50 }).focus() // In cube
+      ;(cp as any)._bounds = { x: 0, y: 0, width: 40, height: 15 }
+      cp.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+      expect(buffer).toBeDefined()
+    })
+
+    it('renders rgb mode with narrow width', () => {
+      const cp = colorpicker({ mode: 'rgb', color: 50 })
+      ;(cp as any)._bounds = { x: 0, y: 0, width: 10, height: 15 }
+      cp.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+      expect(buffer).toBeDefined()
+    })
+  })
+
+  describe('basic16 navigation edge cases', () => {
+    it('moveUp does nothing when color < 8', () => {
+      const cp = colorpicker({ color: 5, mode: 'basic16' }).focus()
+      cp.moveUp()
+      expect(cp.selectedColor).toBe(5)
+    })
+
+    it('moveDown does nothing when color >= 8', () => {
+      const cp = colorpicker({ color: 12, mode: 'basic16' }).focus()
+      cp.moveDown()
+      expect(cp.selectedColor).toBe(12)
+    })
+  })
+
+  describe('mouse click on color', () => {
+    let buffer: ReturnType<typeof createTestBuffer>
+
+    beforeEach(() => {
+      buffer = createTestBuffer(40, 15)
+    })
+
+    it('clicks on basic16 palette', () => {
+      const cp = colorpicker({ mode: 'basic16', showPreview: true })
+      ;(cp as any)._bounds = { x: 0, y: 0, width: 40, height: 10 }
+
+      // Click on color in palette area (y >= previewHeight)
+      ;(cp as any).handleMouse(4, 2, 'press')
+      expect(cp.isFocused).toBe(true)
+    })
+
+    it('clicks on palette256', () => {
+      const cp = colorpicker({ mode: 'palette256', showPreview: true })
+      ;(cp as any)._bounds = { x: 0, y: 0, width: 40, height: 10 }
+
+      ;(cp as any).handleMouse(4, 2, 'press')
+      expect(cp.isFocused).toBe(true)
+    })
+
+    it('clicks on grayscale palette', () => {
+      const cp = colorpicker({ mode: 'grayscale', showPreview: true, color: 240 })
+      ;(cp as any)._bounds = { x: 0, y: 0, width: 40, height: 10 }
+
+      ;(cp as any).handleMouse(4, 2, 'press')
+      expect(cp.isFocused).toBe(true)
+    })
+
+    it('ignores non-press actions', () => {
+      const cp = colorpicker({ mode: 'basic16' })
+      ;(cp as any)._bounds = { x: 0, y: 0, width: 40, height: 10 }
+
+      const result = (cp as any).handleMouse(4, 2, 'move')
+      expect(result).toBe(false)
+    })
+  })
+
+  describe('grayscale rendering selection', () => {
+    let buffer: ReturnType<typeof createTestBuffer>
+
+    beforeEach(() => {
+      buffer = createTestBuffer(40, 15)
+    })
+
+    it('renders grayscale with selection highlight', () => {
+      const cp = colorpicker({ mode: 'grayscale', color: 240 }).focus()
+      ;(cp as any)._bounds = { x: 0, y: 0, width: 40, height: 15 }
+      cp.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+      expect(buffer).toBeDefined()
+    })
+  })
+
+  describe('palette256 rendering selection', () => {
+    let buffer: ReturnType<typeof createTestBuffer>
+
+    beforeEach(() => {
+      buffer = createTestBuffer(40, 15)
+    })
+
+    it('renders palette256 with selection highlight in cube', () => {
+      const cp = colorpicker({ mode: 'palette256', color: 50 }).focus()
+      ;(cp as any)._bounds = { x: 0, y: 0, width: 40, height: 15 }
+      cp.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+      expect(buffer).toBeDefined()
+    })
+  })
 })

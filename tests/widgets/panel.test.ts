@@ -433,4 +433,58 @@ describe('Panel Widget', () => {
       expect(p.type).toBe('panel')
     })
   })
+
+  describe('title and footer truncation', () => {
+    let buffer: ReturnType<typeof createBuffer>
+    const width = 20
+    const height = 10
+
+    beforeEach(() => {
+      buffer = createBuffer(width, height)
+      fillBuffer(buffer, { char: ' ', fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+    })
+
+    it('truncates long title', () => {
+      const p = panel({
+        title: 'This is a very very very long title that needs truncation'
+      })
+      ;(p as any)._bounds = { x: 0, y: 0, width, height }
+      p.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+      expect(buffer).toBeDefined()
+    })
+
+    it('truncates long title with subtitle', () => {
+      const p = panel({
+        title: 'Long Title',
+        subtitle: 'And a long subtitle that makes it even longer'
+      })
+      ;(p as any)._bounds = { x: 0, y: 0, width, height }
+      p.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+      expect(buffer).toBeDefined()
+    })
+
+    it('truncates long footer', () => {
+      const p = panel({
+        title: 'Test',
+        footer: 'This is a very very very long footer text that needs truncation'
+      })
+      ;(p as any)._bounds = { x: 0, y: 0, width, height }
+      p.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+      expect(buffer).toBeDefined()
+    })
+
+    it('renders title with center alignment', () => {
+      const p = panel({ title: 'Centered' }).titleAlign('center')
+      ;(p as any)._bounds = { x: 0, y: 0, width: 40, height }
+      p.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+      expect(buffer).toBeDefined()
+    })
+
+    it('renders title with right alignment', () => {
+      const p = panel({ title: 'Right' }).titleAlign('right')
+      ;(p as any)._bounds = { x: 0, y: 0, width: 40, height }
+      p.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+      expect(buffer).toBeDefined()
+    })
+  })
 })

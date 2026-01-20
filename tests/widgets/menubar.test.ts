@@ -1475,5 +1475,87 @@ describe('Menubar Widget', () => {
       ;(m as any)._bounds = { x: 0, y: 0, width: 18, height: 10 }
       m.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
     })
+
+    it('iterates through multiple menus for hotkey match when closed', () => {
+      const m = menubar()
+        .addMenu({ id: 'file', label: 'File', hotkey: 'f', items: [] })
+        .addMenu({ id: 'edit', label: 'Edit', hotkey: 'e', items: [] })
+        .addMenu({ id: 'view', label: 'View', hotkey: 'v', items: [] })
+        .focus()
+
+      // Press 'v' - should iterate through all menus to find matching hotkey
+      const handled = (m as any).handleKey('v', false)
+      expect(handled).toBe(true)
+      expect(m.activeMenuId).toBe('view')
+    })
+
+    it('handles down key when menu is open with multiple items', () => {
+      const m = menubar()
+        .addMenu({
+          id: 'file',
+          label: 'File',
+          items: [
+            { label: 'New', value: 'new' },
+            { label: 'Open', value: 'open' },
+            { label: 'Save', value: 'save' }
+          ]
+        })
+        .focus()
+        .openMenu('file')
+
+      const handled = (m as any).handleKey('down', false)
+      expect(handled).toBe(true)
+      expect(m.selectedItemIndex).toBe(1)
+    })
+
+    it('renders filled style menubar background', () => {
+      const buffer = createBuffer(40, 15)
+      fillBuffer(buffer, { char: '.', fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      const m = menubar({ style: 'filled' })
+        .addMenu({ id: 'file', label: 'File', items: [] })
+        .addMenu({ id: 'edit', label: 'Edit', items: [] })
+      ;(m as any)._bounds = { x: 0, y: 0, width: 40, height: 15 }
+      m.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      // The filled style should clear the menubar row
+      expect(buffer.get(20, 0).char).toBe(' ')
+    })
+
+    it('renders scroll up indicator when items are scrolled', () => {
+      const buffer = createBuffer(40, 15)
+      fillBuffer(buffer, { char: ' ', fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      const m = menubar({ maxVisible: 3, border: 'single' })
+        .addMenu({
+          id: 'file',
+          label: 'File',
+          items: Array.from({ length: 10 }, (_, i) => ({
+            label: `Item ${i}`,
+            value: `item${i}`
+          }))
+        })
+        .openMenu('file')
+      ;(m as any)._bounds = { x: 0, y: 0, width: 40, height: 15 }
+
+      // Scroll down to make scroll up indicator appear
+      ;(m as any)._scrollOffset = 3
+      ;(m as any)._selectedItemIndex = 4
+
+      m.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      // Check for scroll up indicator (▲) - it should be at y=2 (posY=1 + borderOffset=1)
+      let foundUpArrow = false
+      for (let y = 0; y < 10; y++) {
+        for (let x = 0; x < 30; x++) {
+          if (buffer.get(x, y).char === '\u25b2') {
+            foundUpArrow = true
+            break
+          }
+        }
+        if (foundUpArrow) break
+      }
+      expect(foundUpArrow).toBe(true)
+    })
   })
 })

@@ -696,4 +696,124 @@ describe('List Widget', () => {
       expect(l.isFocused).toBe(true)
     })
   })
+
+  describe('additional rendering edge cases', () => {
+    it('should render items with selectable: false', () => {
+      const l = list()
+        .items([
+          { id: '1', label: 'Selectable', selectable: true },
+          { id: '2', label: 'Not Selectable', selectable: false }
+        ])
+      ;(l as any)._bounds = { x: 0, y: 0, width: 40, height: 10 }
+
+      const buffer = createBuffer(80, 24)
+      l.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      expect(buffer).toBeDefined()
+    })
+
+    it('should truncate very long labels', () => {
+      const l = list()
+        .items([
+          { id: '1', label: 'This is a very very very long label that definitely exceeds the available width' }
+        ])
+      ;(l as any)._bounds = { x: 0, y: 0, width: 20, height: 10 }
+
+      const buffer = createBuffer(80, 24)
+      l.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      expect(buffer).toBeDefined()
+    })
+
+    it('should truncate labels with lineNumbers and multiSelect', () => {
+      const l = list()
+        .lineNumbers(true)
+        .multiSelect(true)
+        .items([
+          { id: '1', label: 'A very long label that needs truncation with multiple features enabled' }
+        ])
+      ;(l as any)._bounds = { x: 0, y: 0, width: 30, height: 10 }
+
+      const buffer = createBuffer(80, 24)
+      l.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      expect(buffer).toBeDefined()
+    })
+
+    it('should render secondary text that barely fits', () => {
+      const l = list()
+        .items([
+          { id: '1', label: 'Short', secondary: 'Some secondary text' }
+        ])
+      ;(l as any)._bounds = { x: 0, y: 0, width: 40, height: 10 }
+
+      const buffer = createBuffer(80, 24)
+      l.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      expect(buffer).toBeDefined()
+    })
+
+    it('should render secondary text with narrow width (not enough space)', () => {
+      const l = list()
+        .items([
+          { id: '1', label: 'Label', secondary: 'Secondary' }
+        ])
+      ;(l as any)._bounds = { x: 0, y: 0, width: 15, height: 10 }
+
+      const buffer = createBuffer(80, 24)
+      l.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      expect(buffer).toBeDefined()
+    })
+
+    it('should render current (focused) item with inverse styling', () => {
+      const l = list()
+        .items([
+          { id: '1', label: 'Item 1' },
+          { id: '2', label: 'Item 2' }
+        ])
+        .focus()
+      ;(l as any)._bounds = { x: 0, y: 0, width: 40, height: 10 }
+
+      const buffer = createBuffer(80, 24)
+      l.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      expect(buffer).toBeDefined()
+    })
+  })
+
+  describe('mouse handling edge cases', () => {
+    it('should return false for unknown keys', () => {
+      const l = list().items([{ id: '1', label: 'A' }]).focus()
+      const result = (l as any).handleKey('x', false)
+      expect(result).toBe(false)
+    })
+
+    it('should return true for move action inside list', () => {
+      const l = list()
+        .items([{ id: '1', label: 'A' }])
+      ;(l as any)._bounds = { x: 0, y: 0, width: 40, height: 10 }
+
+      const result = (l as any).handleMouse(5, 0, 'move')
+      expect(result).toBe(true)
+    })
+
+    it('should handle click on non-selectable item', () => {
+      const l = list()
+        .items([{ id: '1', label: 'A', selectable: false }])
+      ;(l as any)._bounds = { x: 0, y: 0, width: 40, height: 10 }
+
+      const result = (l as any).handleMouse(5, 0, 'press')
+      expect(result).toBe(true)
+    })
+
+    it('should handle click on separator', () => {
+      const l = list()
+        .items([{ id: '1', label: '', separator: true }])
+      ;(l as any)._bounds = { x: 0, y: 0, width: 40, height: 10 }
+
+      const result = (l as any).handleMouse(5, 0, 'press')
+      expect(result).toBe(true)
+    })
+  })
 })

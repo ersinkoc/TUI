@@ -420,4 +420,141 @@ describe('Grid Widget', () => {
       expect((t2 as any)._parent).toBe(null)
     })
   })
+
+  describe('additional edge cases', () => {
+    let buffer: ReturnType<typeof createBuffer>
+
+    beforeEach(() => {
+      buffer = createBuffer(60, 20)
+      fillBuffer(buffer, { char: ' ', fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+    })
+
+    it('does not remove non-existent node', () => {
+      const t1 = text('Exists')
+      const t2 = text('Does not exist')
+      const g = grid().add(t1)
+
+      expect(g.cellCount).toBe(1)
+      g.remove(t2) // Remove something that was never added
+      expect(g.cellCount).toBe(1) // Count should still be 1
+    })
+
+    it('handles row template with fixed string value (not fr/percent)', () => {
+      const g = grid()
+        .columns(1)
+        .rows(2)
+        .rowTemplate(['20', '30']) // String numbers, not fr or %
+        .add(text('A'))
+        .add(text('B'))
+
+      ;(g as any)._bounds = { x: 0, y: 0, width: 50, height: 100 }
+      g.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+      expect(g.cellCount).toBe(2)
+    })
+
+    it('handles column template with fixed string value (not fr/percent)', () => {
+      const g = grid()
+        .columns(2)
+        .rows(1)
+        .columnTemplate(['15', '25']) // String numbers, not fr or %
+        .add(text('A'))
+        .add(text('B'))
+
+      ;(g as any)._bounds = { x: 0, y: 0, width: 100, height: 10 }
+      g.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+      expect(g.cellCount).toBe(2)
+    })
+
+    it('handles props with columnGap and rowGap', () => {
+      const g = grid({
+        columns: 2,
+        rows: 2,
+        gap: 1,
+        columnGap: 2,
+        rowGap: 3
+      })
+        .add(text('A'))
+        .add(text('B'))
+
+      ;(g as any)._bounds = { x: 0, y: 0, width: 60, height: 10 }
+      g.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+    })
+
+    it('handles mixed fr units in row template', () => {
+      const g = grid()
+        .columns(1)
+        .rows(3)
+        .rowTemplate(['1fr', '2fr', '1fr'])
+        .add(text('A'))
+        .add(text('B'))
+        .add(text('C'))
+
+      ;(g as any)._bounds = { x: 0, y: 0, width: 40, height: 12 }
+      g.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+    })
+
+    it('handles percentage in row template', () => {
+      const g = grid()
+        .columns(1)
+        .rows(2)
+        .rowTemplate(['50%', '50%'])
+        .add(text('A'))
+        .add(text('B'))
+
+      ;(g as any)._bounds = { x: 0, y: 0, width: 40, height: 20 }
+      g.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+    })
+
+    it('handles numeric values in row template', () => {
+      const g = grid()
+        .columns(1)
+        .rows(2)
+        .rowTemplate([5, 10]) // Numeric values
+        .add(text('A'))
+        .add(text('B'))
+
+      ;(g as any)._bounds = { x: 0, y: 0, width: 40, height: 20 }
+      g.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+    })
+
+    it('handles zero totalFr case in row template', () => {
+      const g = grid()
+        .columns(1)
+        .rows(2)
+        .rowTemplate([5, 10]) // All fixed, no fr units
+        .add(text('A'))
+        .add(text('B'))
+
+      ;(g as any)._bounds = { x: 0, y: 0, width: 40, height: 20 }
+      g.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+    })
+
+    it('handles zero totalFr case in column template', () => {
+      const g = grid()
+        .columns(2)
+        .rows(1)
+        .columnTemplate([10, 20]) // All fixed, no fr units
+        .add(text('A'))
+        .add(text('B'))
+
+      ;(g as any)._bounds = { x: 0, y: 0, width: 100, height: 10 }
+      g.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+    })
+
+    it('handles row span exceeding grid rows', () => {
+      const g = grid({ columns: 2, rows: 2 })
+        .cell(1, 1, text('Big'), 1, 5) // Row span of 5 but only 2 rows
+
+      ;(g as any)._bounds = { x: 0, y: 0, width: 40, height: 10 }
+      g.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+    })
+
+    it('handles column span exceeding grid columns', () => {
+      const g = grid({ columns: 2, rows: 2 })
+        .cell(1, 1, text('Wide'), 5, 1) // Col span of 5 but only 2 columns
+
+      ;(g as any)._bounds = { x: 0, y: 0, width: 40, height: 10 }
+      g.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+    })
+  })
 })

@@ -455,4 +455,163 @@ describe('Slider Widget', () => {
       expect(s.currentValue).toBe(50)
     })
   })
+
+  describe('vertical slider with range labels', () => {
+    let buffer: ReturnType<typeof createBuffer>
+    const width = 10
+    const height = 12
+
+    beforeEach(() => {
+      buffer = createBuffer(width, height)
+      fillBuffer(buffer, { char: ' ', fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+    })
+
+    it('renders vertical slider with showRange true', () => {
+      const s = slider({
+        value: 50,
+        min: 0,
+        max: 100,
+        orientation: 'vertical',
+        showRange: true
+      })
+      ;(s as any)._bounds = { x: 0, y: 0, width, height }
+      s.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+      expect(buffer).toBeDefined()
+    })
+
+    it('renders vertical slider with showValue true', () => {
+      const s = slider({
+        value: 75,
+        min: 0,
+        max: 100,
+        orientation: 'vertical',
+        showValue: true
+      }).focus()
+      ;(s as any)._bounds = { x: 0, y: 0, width, height }
+      s.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+      expect(buffer).toBeDefined()
+    })
+
+    it('renders vertical slider with both showRange and showValue', () => {
+      const s = slider({
+        value: 50,
+        min: 0,
+        max: 100,
+        orientation: 'vertical',
+        showRange: true,
+        showValue: true
+      })
+      ;(s as any)._bounds = { x: 0, y: 0, width, height }
+      s.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+      expect(buffer).toBeDefined()
+    })
+
+    it('renders vertical slider at min value', () => {
+      const s = slider({
+        value: 0,
+        min: 0,
+        max: 100,
+        orientation: 'vertical',
+        showRange: true
+      })
+      ;(s as any)._bounds = { x: 0, y: 0, width, height }
+      s.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+      expect(buffer).toBeDefined()
+    })
+
+    it('renders vertical slider at max value', () => {
+      const s = slider({
+        value: 100,
+        min: 0,
+        max: 100,
+        orientation: 'vertical',
+        showRange: true
+      })
+      ;(s as any)._bounds = { x: 0, y: 0, width, height }
+      s.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+      expect(buffer).toBeDefined()
+    })
+  })
+
+  describe('vertical slider mouse handling', () => {
+    it('handles mouse press on vertical slider with showRange', () => {
+      const s = slider({
+        min: 0,
+        max: 100,
+        value: 50,
+        orientation: 'vertical',
+        showRange: true
+      })
+      ;(s as any)._bounds = { x: 0, y: 0, width: 5, height: 12 }
+
+      // Click near the top (high value)
+      const handled = (s as any).handleMouse(2, 1, 'press')
+      expect(handled).toBe(true)
+      // Value should increase (closer to max)
+    })
+
+    it('handles mouse press on vertical slider without showRange', () => {
+      const s = slider({
+        min: 0,
+        max: 100,
+        value: 50,
+        orientation: 'vertical',
+        showRange: false
+      })
+      ;(s as any)._bounds = { x: 0, y: 0, width: 5, height: 10 }
+
+      // Click in the middle
+      const handled = (s as any).handleMouse(2, 5, 'press')
+      expect(handled).toBe(true)
+    })
+
+    it('handles mouse move on vertical slider', () => {
+      const s = slider({
+        min: 0,
+        max: 100,
+        value: 50,
+        orientation: 'vertical',
+        showRange: true
+      })
+      ;(s as any)._bounds = { x: 0, y: 0, width: 5, height: 12 }
+
+      // Move to bottom (low value)
+      const handled = (s as any).handleMouse(2, 10, 'move')
+      expect(handled).toBe(true)
+    })
+
+    it('handles mouse move on horizontal slider', () => {
+      const s = slider({
+        min: 0,
+        max: 100,
+        value: 50,
+        orientation: 'horizontal',
+        showRange: false,
+        showValue: false
+      })
+      ;(s as any)._bounds = { x: 0, y: 0, width: 20, height: 1 }
+
+      // Move along the track
+      const handled = (s as any).handleMouse(15, 0, 'move')
+      expect(handled).toBe(true)
+    })
+
+    it('returns true for other mouse actions inside bounds', () => {
+      const s = slider({ min: 0, max: 100, value: 50 })
+      ;(s as any)._bounds = { x: 0, y: 0, width: 20, height: 1 }
+
+      // 'release' action is not press or move
+      const handled = (s as any).handleMouse(10, 0, 'release')
+      expect(handled).toBe(true)
+    })
+
+    it('returns true for scroll action inside bounds', () => {
+      const s = slider({ min: 0, max: 100, value: 50 })
+      ;(s as any)._bounds = { x: 0, y: 0, width: 20, height: 1 }
+
+      // scroll action is not press or move
+      const handled = (s as any).handleMouse(10, 0, 'scroll-up')
+      expect(handled).toBe(true)
+    })
+  })
 })

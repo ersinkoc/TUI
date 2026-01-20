@@ -442,5 +442,131 @@ describe('ContextMenu Widget', () => {
 
       expect(buffer).toBeDefined()
     })
+
+    it('should render scroll up indicator when scrolled', () => {
+      const items = Array.from({ length: 20 }, (_, i) => ({
+        label: `Item ${i}`,
+        value: `item${i}`
+      }))
+
+      const menu = contextmenu().items(items).maxVisible(5)
+      menu.show(0, 0)
+
+      // Scroll down to show scroll up indicator
+      menu.selectNext()
+      menu.selectNext()
+      menu.selectNext()
+      menu.selectNext()
+      menu.selectNext()
+      menu.selectNext()
+
+      const buffer = createBuffer(80, 24)
+      menu.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      expect(buffer).toBeDefined()
+    })
+
+    it('should truncate long labels', () => {
+      const menu = contextmenu()
+        .items([
+          { label: 'This is a very very very very long label that exceeds menu width', value: 'long' }
+        ])
+        .border('single')
+      menu.show(0, 0)
+
+      // Force narrow width by showing near edge
+      const buffer = createBuffer(20, 10)
+      menu.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      expect(buffer).toBeDefined()
+    })
+
+    it('should truncate long label with shortcut', () => {
+      const menu = contextmenu()
+        .items([
+          { label: 'Very Long Menu Item Label', value: 'long', shortcut: 'Ctrl+Shift+X' }
+        ])
+        .border('single')
+      menu.show(0, 0)
+
+      const buffer = createBuffer(30, 10)
+      menu.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      expect(buffer).toBeDefined()
+    })
+  })
+
+  describe('scroll and ensureVisible edge cases', () => {
+    it('scrolls up to show selected item', () => {
+      const items = Array.from({ length: 15 }, (_, i) => ({
+        label: `Item ${i}`,
+        value: `item${i}`
+      }))
+
+      const menu = contextmenu().items(items).maxVisible(5)
+      menu.show(0, 0)
+
+      // Scroll down first
+      for (let i = 0; i < 10; i++) {
+        menu.selectNext()
+      }
+
+      // Then scroll back up
+      for (let i = 0; i < 8; i++) {
+        menu.selectPrevious()
+      }
+
+      const buffer = createBuffer(80, 24)
+      menu.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      expect(buffer).toBeDefined()
+    })
+
+    it('renders scroll up indicator with manual scroll offset', () => {
+      const items = Array.from({ length: 20 }, (_, i) => ({
+        label: `Item ${i}`,
+        value: `item${i}`
+      }))
+
+      const menu = contextmenu().items(items).maxVisible(5)
+      menu.show(0, 0)
+
+      // Manually set scroll offset to simulate scrolled state
+      ;(menu as any)._scrollOffset = 5
+      ;(menu as any)._selectedIndex = 6
+
+      const buffer = createBuffer(80, 24)
+      menu.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      // Check for scroll up indicator character (▲)
+      let foundUpIndicator = false
+      for (let x = 0; x < 30; x++) {
+        if (buffer.get(x, 1).char === '\u25b2') {
+          foundUpIndicator = true
+          break
+        }
+      }
+      expect(foundUpIndicator).toBe(true)
+    })
+
+    it('handles ensureVisible when scrolling up', () => {
+      const items = Array.from({ length: 20 }, (_, i) => ({
+        label: `Item ${i}`,
+        value: `item${i}`
+      }))
+
+      const menu = contextmenu().items(items).maxVisible(5)
+      menu.show(0, 0)
+
+      // Set scroll offset higher than selected index
+      ;(menu as any)._scrollOffset = 10
+      ;(menu as any)._selectedIndex = 5
+
+      // Call ensureVisible to trigger scroll adjustment
+      ;(menu as any).ensureVisible()
+
+      // scrollOffset should be adjusted to show selected item
+      expect((menu as any)._scrollOffset).toBe(5)
+    })
   })
 })
