@@ -8,29 +8,80 @@ import { cloneBuffer, cellsEqual } from './buffer'
 import { packedToFgAnsi, packedToBgAnsi, attrsToAnsi, cursorTo, reset } from '../utils/ansi'
 
 // ============================================================
+// Synchronized Output (Flicker-free rendering)
+// ============================================================
+
+/**
+ * Terminal synchronization mode sequences.
+ * Uses DEC private mode 2026 for synchronized output.
+ * This allows the terminal to buffer all output until we signal completion,
+ * eliminating visual flicker during rapid updates.
+ *
+ * @see https://gist.github.com/christianparpart/d8a62cc1ab659194337d73e399004036
+ */
+const SYNC_START = '\x1b[?2026h'  // Begin synchronized update
+const SYNC_END = '\x1b[?2026l'    // End synchronized update
+
+/**
+ * Check if the terminal likely supports synchronized output.
+ * Most modern terminals (kitty, iTerm2, WezTerm, Windows Terminal) support this.
+ */
+export function terminalSupportsSyncOutput(): boolean {
+  const term = process.env.TERM || ''
+  const termProgram = process.env.TERM_PROGRAM || ''
+  const wtSession = process.env.WT_SESSION // Windows Terminal
+
+  // Known supporting terminals
+  const supportingTerms = ['xterm-kitty', 'xterm-256color', 'screen-256color']
+  const supportingPrograms = ['iTerm.app', 'WezTerm', 'vscode', 'Hyper']
+
+  return (
+    supportingTerms.some(t => term.includes(t)) ||
+    supportingPrograms.some(p => termProgram.includes(p)) ||
+    !!wtSession ||
+    term.includes('256color')
+  )
+}
+
+// ============================================================
 // Renderer Implementation
 // ============================================================
+
+/**
+ * Renderer options.
+ */
+export interface RendererOptions {
+  /** Enable synchronized output for flicker-free rendering */
+  syncOutput?: boolean
+}
 
 /**
  * Create a differential renderer.
  *
  * @param stdout - Output stream
+ * @param options - Renderer options
  * @returns Renderer instance
  *
  * @example
  * ```typescript
- * const renderer = createRenderer(process.stdout)
+ * const renderer = createRenderer(process.stdout, { syncOutput: true })
  * renderer.render(buffer)
  * ```
  */
-export function createRenderer(stdout: NodeJS.WriteStream): Renderer {
+export function createRenderer(stdout: NodeJS.WriteStream, options: RendererOptions = {}): Renderer {
   let lastBuffer: Buffer | null = null
   let forceRedraw = true
+  const useSyncOutput = options.syncOutput ?? terminalSupportsSyncOutput()
 
   return {
     render(buffer: Buffer): number {
       let cellsUpdated = 0
       const output: string[] = []
+
+      // Start synchronized output
+      if (useSyncOutput) {
+        output.push(SYNC_START)
+      }
 
       let lastX = -1
       let lastY = -1
@@ -97,8 +148,13 @@ export function createRenderer(stdout: NodeJS.WriteStream): Renderer {
       }
 
       // Reset attributes at end
-      if (output.length > 0) {
+      if (output.length > 0 || useSyncOutput) {
         output.push(reset())
+      }
+
+      // End synchronized output
+      if (useSyncOutput) {
+        output.push(SYNC_END)
       }
 
       // Write to stdout
@@ -128,11 +184,13 @@ export function createRenderer(stdout: NodeJS.WriteStream): Renderer {
  * Groups consecutive changes to minimize cursor movements.
  *
  * @param stdout - Output stream
+ * @param options - Renderer options
  * @returns Renderer instance
  */
-export function createBatchedRenderer(stdout: NodeJS.WriteStream): Renderer {
+export function createBatchedRenderer(stdout: NodeJS.WriteStream, options: RendererOptions = {}): Renderer {
   let lastBuffer: Buffer | null = null
   let forceRedraw = true
+  const useSyncOutput = options.syncOutput ?? terminalSupportsSyncOutput()
 
   return {
     render(buffer: Buffer): number {
@@ -165,6 +223,12 @@ export function createBatchedRenderer(stdout: NodeJS.WriteStream): Renderer {
 
       // Render changes
       const output: string[] = []
+
+      // Start synchronized output
+      if (useSyncOutput) {
+        output.push(SYNC_START)
+      }
+
       let currentFg = -1
       let currentBg = -1
       let currentAttrs = -1
@@ -207,8 +271,15 @@ export function createBatchedRenderer(stdout: NodeJS.WriteStream): Renderer {
         cursorY = y
       }
 
-      // Reset and flush
+      // Reset attributes
       output.push(reset())
+
+      // End synchronized output
+      if (useSyncOutput) {
+        output.push(SYNC_END)
+      }
+
+      // Flush to stdout
       stdout.write(output.join(''))
 
       // Save buffer for next frame

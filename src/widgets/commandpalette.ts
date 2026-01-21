@@ -206,32 +206,21 @@ class CommandPaletteNodeImpl extends LeafNode implements CommandPaletteNode {
       this._filteredItems = this._commands
     } else {
       const query = this._query.toLowerCase()
-      this._filteredItems = this._commands.filter(item => {
-        const label = item.label.toLowerCase()
-        const description = (item.description || '').toLowerCase()
-        const category = (item.category || '').toLowerCase()
-        return (
-          this.fuzzyMatch(label, query) ||
-          description.includes(query) ||
-          category.includes(query)
-        )
-      })
 
-      // Sort by relevance (exact match first, then starts with, then contains)
-      this._filteredItems.sort((a, b) => {
-        const aLabel = a.label.toLowerCase()
-        const bLabel = b.label.toLowerCase()
-        const aExact = aLabel === query
-        const bExact = bLabel === query
-        const aStarts = aLabel.startsWith(query)
-        const bStarts = bLabel.startsWith(query)
+      // Score and filter items
+      const scored = this._commands
+        .map(item => ({
+          item,
+          score: this.fuzzyScore(item.label.toLowerCase(), query) +
+                 this.fuzzyScore((item.description || '').toLowerCase(), query) * 0.5 +
+                 this.fuzzyScore((item.category || '').toLowerCase(), query) * 0.3
+        }))
+        .filter(({ score }) => score > 0)
 
-        if (aExact && !bExact) return -1
-        if (!aExact && bExact) return 1
-        if (aStarts && !bStarts) return -1
-        if (!aStarts && bStarts) return 1
-        return aLabel.localeCompare(bLabel)
-      })
+      // Sort by score descending
+      scored.sort((a, b) => b.score - a.score)
+
+      this._filteredItems = scored.map(({ item }) => item)
     }
 
     // Reset selection if out of bounds
@@ -241,15 +230,67 @@ class CommandPaletteNodeImpl extends LeafNode implements CommandPaletteNode {
     this._scrollOffset = 0
   }
 
-  // Simple fuzzy matching
-  private fuzzyMatch(text: string, query: string): boolean {
+  /**
+   * Advanced fuzzy matching with scoring.
+   * Higher scores indicate better matches.
+   *
+   * Scoring factors:
+   * - Exact match: highest score
+   * - Starts with query: high score
+   * - Consecutive character matches: bonus
+   * - Word boundary matches: bonus
+   * - Shorter strings with matches: slight bonus
+   */
+  private fuzzyScore(text: string, query: string): number {
+    if (!text || !query) return 0
+    if (text === query) return 100 // Exact match
+    if (text.startsWith(query)) return 90 + (query.length / text.length) * 10
+
+    let score = 0
     let queryIndex = 0
+    let consecutiveBonus = 0
+    let lastMatchIndex = -2
+
     for (let i = 0; i < text.length && queryIndex < query.length; i++) {
       if (text[i] === query[queryIndex]) {
+        // Base score for match
+        score += 10
+
+        // Consecutive match bonus
+        if (i === lastMatchIndex + 1) {
+          consecutiveBonus += 5
+          score += consecutiveBonus
+        } else {
+          consecutiveBonus = 0
+        }
+
+        // Word boundary bonus (start of word)
+        if (i === 0 || text[i - 1] === ' ' || text[i - 1] === '-' || text[i - 1] === '_') {
+          score += 15
+        }
+
+        // Uppercase letter bonus (camelCase boundary)
+        if (text[i] !== text[i].toLowerCase() && i > 0) {
+          score += 10
+        }
+
+        lastMatchIndex = i
         queryIndex++
       }
     }
-    return queryIndex === query.length
+
+    // Return 0 if query didn't fully match
+    if (queryIndex !== query.length) return 0
+
+    // Bonus for shorter strings (query covers more of the text)
+    score += (query.length / text.length) * 20
+
+    return score
+  }
+
+  // Simple fuzzy matching (for backwards compatibility)
+  private fuzzyMatch(text: string, query: string): boolean {
+    return this.fuzzyScore(text, query) > 0
   }
 
   private ensureVisible(): void {

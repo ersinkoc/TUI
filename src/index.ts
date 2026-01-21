@@ -275,6 +275,10 @@ export type { TerminalProps, TerminalNode, TerminalLine } from './widgets'
 export { stopwatch } from './widgets'
 export type { StopwatchProps, StopwatchNode, StopwatchMode, LapTime } from './widgets'
 
+// Help
+export { help, helpItems, helpSection, commonHelpItems, vimHelpItems } from './widgets'
+export type { HelpProps, HelpNode, HelpItem, HelpSection } from './widgets'
+
 // ============================================================
 // Theme System
 // ============================================================

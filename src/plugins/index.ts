@@ -82,6 +82,58 @@ export type { ClipboardPluginOptions, ClipboardPluginAPI } from './clipboard'
 export { screenPlugin, onResize, detectCapabilities } from './screen'
 export type { ScreenPluginOptions, ScreenPluginAPI } from './screen'
 
+// State management plugin
+export { statePlugin, combineReducers, createAction, loggerMiddleware, thunkMiddleware, createSelector, ActionTypes } from './state'
+export type {
+  StatePluginOptions,
+  StatePluginAPI,
+  Store,
+  StoreOptions,
+  Action,
+  Reducer,
+  Selector,
+  Middleware,
+  Listener
+} from './state'
+
+// Shortcuts plugin
+export { shortcutsPlugin, commonShortcuts, vimNavigationShortcuts, vimEditingShortcuts, createVimShortcuts } from './shortcuts'
+export type {
+  ShortcutsPluginOptions,
+  ShortcutsPluginAPI,
+  Shortcut,
+  ShortcutContext,
+  ShortcutPriority,
+  ShortcutConflict,
+  VimMode
+} from './shortcuts'
+
+// Responsive plugin
+export { responsivePlugin, defaultBreakpoints, responsiveStyles, responsiveLayout, terminalPresets } from './responsive'
+export type {
+  ResponsivePluginOptions,
+  ResponsivePluginAPI,
+  Breakpoint,
+  BreakpointName,
+  MediaQuery,
+  ResponsiveValue,
+  BreakpointChangeHandler
+} from './responsive'
+
+// Router plugin
+export { routerPlugin, defineRoute, defineRoutes } from './router'
+export type {
+  RouterPluginOptions,
+  RouterPluginAPI,
+  RouteDefinition,
+  Route,
+  RouteParams,
+  RouteQuery,
+  NavigationGuard,
+  NavigationDirection,
+  NavigationHandler
+} from './router'
+
 // ============================================================
 // Plugin Presets
 // ============================================================

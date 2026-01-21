@@ -215,3 +215,59 @@ export function parseKeyPattern(pattern: string): {
 export type { KeyParser, MouseParser } from './keys'
 
 export type ParsedKeyPattern = ReturnType<typeof parseKeyPattern>
+
+// Easing utilities
+export {
+  // Linear
+  linear,
+  // Quadratic
+  easeInQuad,
+  easeOutQuad,
+  easeInOutQuad,
+  // Cubic
+  easeInCubic,
+  easeOutCubic,
+  easeInOutCubic,
+  // Quartic
+  easeInQuart,
+  easeOutQuart,
+  easeInOutQuart,
+  // Quintic
+  easeInQuint,
+  easeOutQuint,
+  easeInOutQuint,
+  // Sinusoidal
+  easeInSine,
+  easeOutSine,
+  easeInOutSine,
+  // Exponential
+  easeInExpo,
+  easeOutExpo,
+  easeInOutExpo,
+  // Circular
+  easeInCirc,
+  easeOutCirc,
+  easeInOutCirc,
+  // Back (overshoot)
+  easeInBack,
+  easeOutBack,
+  easeInOutBack,
+  // Elastic
+  easeInElastic,
+  easeOutElastic,
+  easeInOutElastic,
+  // Bounce
+  easeInBounce,
+  easeOutBounce,
+  easeInOutBounce,
+  // Spring
+  spring,
+  createSpring,
+  // Utilities
+  easingFunctions,
+  getEasing,
+  interpolate,
+  tween
+} from './easing'
+
+export type { EasingFunction, EasingName } from './easing'

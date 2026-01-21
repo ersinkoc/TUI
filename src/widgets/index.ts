@@ -338,3 +338,12 @@ export type {
   StopwatchMode,
   LapTime
 } from './stopwatch'
+
+// Help
+export { help, helpItems, helpSection, commonHelpItems, vimHelpItems } from './help'
+export type {
+  HelpProps,
+  HelpNode,
+  HelpItem,
+  HelpSection
+} from './help'
