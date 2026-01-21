@@ -273,7 +273,7 @@ class ImageNodeImpl extends LeafNode implements ImageNode {
 
   // Apply brightness and contrast adjustment
   private adjustPixel(pixel: Pixel): Pixel {
-    let { r, g, b, a } = pixel
+    let { r, g, b } = pixel
 
     // Apply brightness
     if (this._brightness !== 0) {
@@ -291,7 +291,9 @@ class ImageNodeImpl extends LeafNode implements ImageNode {
       b = Math.max(0, Math.min(255, factor * (b - 128) + 128))
     }
 
-    return { r, g, b, a }
+    const result: Pixel = { r, g, b }
+    if (pixel.a !== undefined) result.a = pixel.a
+    return result
   }
 
   // Convert pixel to grayscale (0-255)
@@ -309,8 +311,9 @@ class ImageNodeImpl extends LeafNode implements ImageNode {
   // Convert grayscale to ASCII character
   private grayToChar(gray: number): string {
     const chars = CHARSETS[this._charset]
+    if (!chars || chars.length === 0) return ' '
     const index = Math.floor((gray / 256) * chars.length)
-    return chars[Math.min(chars.length - 1, Math.max(0, index))]
+    return chars[Math.min(chars.length - 1, Math.max(0, index))] ?? ' '
   }
 
   // Convert RGB to terminal color (basic 16 colors or 256 colors)
@@ -334,7 +337,8 @@ class ImageNodeImpl extends LeafNode implements ImageNode {
           [3, 11, 1, 9],
           [15, 7, 13, 5]
         ]
-        const threshold = (bayerMatrix[y % 4][x % 4] / 16) * 255
+        const row = bayerMatrix[y % 4]
+        const threshold = ((row?.[x % 4] ?? 0) / 16) * 255
         return gray > threshold ? gray + 32 : gray - 32
       }
       case 'random': {

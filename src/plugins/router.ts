@@ -7,6 +7,11 @@
  */
 
 import type { Plugin, TUIApp, Node } from '../types'
+import {
+  ROUTER_MAX_HISTORY_SIZE,
+  ROUTER_MAX_REDIRECT_DEPTH,
+  ROUTER_MAX_CACHE_SIZE
+} from '../constants'
 
 // ============================================================
 // Types
@@ -144,6 +149,8 @@ export interface RouterPluginAPI {
 // Cache for compiled route patterns (performance fix)
 const routePatternCache = new Map<string, { regex: RegExp; paramNames: string[] }>()
 
+// Use centralized constant for cache size
+
 /**
  * Parse a route path pattern into regex and param names.
  * Results are cached to avoid O(n) regex compilation on every navigation.
@@ -170,6 +177,14 @@ function parseRoutePath(pattern: string): { regex: RegExp; paramNames: string[] 
   const result = {
     regex: new RegExp(`^${regexStr}$`),
     paramNames
+  }
+
+  // Evict oldest entries if cache is full (LRU-like behavior)
+  if (routePatternCache.size >= ROUTER_MAX_CACHE_SIZE) {
+    const firstKey = routePatternCache.keys().next().value
+    if (firstKey) {
+      routePatternCache.delete(firstKey)
+    }
   }
 
   // Cache the result
@@ -232,7 +247,7 @@ function parseQuery(queryString: string): RouteQuery {
 /**
  * Build query string from object.
  */
-function _buildQuery(query: RouteQuery): string {
+export function buildQuery(query: RouteQuery): string {
   const params = new URLSearchParams()
   for (const [key, value] of Object.entries(query)) {
     if (value !== undefined) {
@@ -291,7 +306,7 @@ export function routerPlugin(options: RouterPluginOptions = {}): Plugin {
     routes: initialRoutes = [],
     defaultRoute = '/',
     debug = false,
-    maxHistorySize = 50
+    maxHistorySize = ROUTER_MAX_HISTORY_SIZE
   } = options
 
   let app: TUIApp | null = null
@@ -307,8 +322,7 @@ export function routerPlugin(options: RouterPluginOptions = {}): Plugin {
   let isNavigating = false
   const navigationQueue: Array<() => Promise<boolean>> = []
 
-  // Maximum redirect depth to prevent infinite recursion
-  const MAX_REDIRECT_DEPTH = 10
+  // Use centralized constant for redirect depth
 
   /**
    * Create a route object from path.
@@ -436,9 +450,9 @@ export function routerPlugin(options: RouterPluginOptions = {}): Plugin {
     redirectDepth: number = 0
   ): Promise<boolean> {
     // Check redirect depth to prevent infinite recursion
-    if (redirectDepth > MAX_REDIRECT_DEPTH) {
+    if (redirectDepth > ROUTER_MAX_REDIRECT_DEPTH) {
       if (debug) {
-        console.error(`[router] Maximum redirect depth (${MAX_REDIRECT_DEPTH}) exceeded`)
+        console.error(`[router] Maximum redirect depth (${ROUTER_MAX_REDIRECT_DEPTH}) exceeded`)
       }
       return false
     }

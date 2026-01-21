@@ -590,9 +590,13 @@ class ListNodeImpl<T = unknown> extends LeafNode implements ListNode<T> {
     }
 
     // Draw scrollbar if needed
-    if (this._items.length > height) {
+    if (this._items.length > height && this._items.length > 0) {
       const scrollbarHeight = Math.max(1, Math.floor((height / this._items.length) * height))
-      const scrollbarPos = Math.floor((this._scrollOffset / (this._items.length - height)) * (height - scrollbarHeight))
+      const scrollRange = this._items.length - height
+      // Guard against division by zero
+      const scrollbarPos = scrollRange > 0
+        ? Math.floor((this._scrollOffset / scrollRange) * Math.max(0, height - scrollbarHeight))
+        : 0
 
       for (let i = 0; i < height; i++) {
         const char = i >= scrollbarPos && i < scrollbarPos + scrollbarHeight ? '█' : '░'

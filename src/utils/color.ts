@@ -26,7 +26,9 @@ import { NAMED_COLORS, DEFAULT_FG, DEFAULT_BG } from '../constants'
  * ```
  */
 export function packColor(r: number, g: number, b: number, a: number = 255): number {
-  return ((r & 0xff) << 24) | ((g & 0xff) << 16) | ((b & 0xff) << 8) | (a & 0xff)
+  // Use >>> 0 to convert to unsigned 32-bit integer
+  // This prevents negative values when r >= 128 (e.g., 255 << 24 would be -16777216 without this)
+  return (((r & 0xff) << 24) | ((g & 0xff) << 16) | ((b & 0xff) << 8) | (a & 0xff)) >>> 0
 }
 
 /**
@@ -42,7 +44,8 @@ export function packColor(r: number, g: number, b: number, a: number = 255): num
  * ```
  */
 export function unpackColor(packed: number): [number, number, number, number] {
-  return [(packed >> 24) & 0xff, (packed >> 16) & 0xff, (packed >> 8) & 0xff, packed & 0xff]
+  // Use >>> for unsigned right shift to handle large values correctly
+  return [(packed >>> 24) & 0xff, (packed >>> 16) & 0xff, (packed >>> 8) & 0xff, packed & 0xff]
 }
 
 // ============================================================

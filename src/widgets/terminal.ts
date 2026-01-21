@@ -5,7 +5,7 @@
  */
 
 import { LeafNode } from './node'
-import type { Node, Buffer, CellStyle } from '../types'
+import type { Buffer, CellStyle } from '../types'
 import { DEFAULT_FG, DEFAULT_BG } from '../utils/color'
 import { ATTR_BOLD, ATTR_DIM } from '../constants'
 import { truncateToWidth, stringWidth } from '../utils/unicode'
@@ -163,9 +163,9 @@ class TerminalNodeImpl extends LeafNode implements TerminalNode {
     // Check for newlines
     const parts = this._currentLine.split('\n')
     for (let i = 0; i < parts.length - 1; i++) {
-      this.addLine(parts[i], fg, bg, attrs)
+      this.addLine(parts[i] ?? '', fg, bg, attrs)
     }
-    this._currentLine = parts[parts.length - 1]
+    this._currentLine = parts[parts.length - 1] ?? ''
 
     this.markDirty()
     return this
@@ -183,13 +183,14 @@ class TerminalNodeImpl extends LeafNode implements TerminalNode {
   }
 
   private addLine(content: string, fg?: number, bg?: number, attrs?: number): void {
-    this._lines.push({
+    const line: TerminalLine = {
       content,
-      fg,
-      bg,
-      attrs,
       timestamp: Date.now()
-    })
+    }
+    if (fg !== undefined) line.fg = fg
+    if (bg !== undefined) line.bg = bg
+    if (attrs !== undefined) line.attrs = attrs
+    this._lines.push(line)
 
     // Trim excess lines
     while (this._lines.length > this._maxLines) {
@@ -496,7 +497,7 @@ class TerminalNodeImpl extends LeafNode implements TerminalNode {
 
   // Mouse handling
   /** @internal */
-  handleMouse(x: number, y: number, action: string): boolean {
+  handleMouse(_x: number, _y: number, action: string): boolean {
     if (!this._visible) return false
 
     const bounds = this._bounds
@@ -550,6 +551,7 @@ class TerminalNodeImpl extends LeafNode implements TerminalNode {
 
     for (let i = startLine; i < endLine; i++) {
       const line = this._lines[i]
+      if (!line) continue
       const screenY = bounds.y + (i - startLine)
       let screenX = bounds.x
 
@@ -616,7 +618,7 @@ class TerminalNodeImpl extends LeafNode implements TerminalNode {
         const cursorX = inputX + this._cursorPosition
         if (cursorX < bounds.x + bounds.width - 1) {
           const cursorChar = this._cursorPosition < this._inputBuffer.length
-            ? this._inputBuffer[this._cursorPosition]
+            ? (this._inputBuffer[this._cursorPosition] ?? this._cursorChar)
             : this._cursorChar
           buffer.set(cursorX, inputY, {
             char: cursorChar,

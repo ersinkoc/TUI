@@ -146,6 +146,9 @@ class LogViewerNodeImpl extends LeafNode implements LogViewerNode {
   private _wordWrap: boolean = false
   private _filterText: string = ''
 
+  /** Get word wrap setting */
+  get wordWrapEnabled(): boolean { return this._wordWrap }
+
   private _scrollOffset: number = 0
   private _selectedIndex: number = -1
   private _isFocused: boolean = false
@@ -407,6 +410,7 @@ class LogViewerNodeImpl extends LeafNode implements LogViewerNode {
   nextError(): this {
     for (let i = this._selectedIndex + 1; i < this._filteredEntries.length; i++) {
       const entry = this._filteredEntries[i]
+      if (!entry) continue
       if (entry.level === 'error' || entry.level === 'fatal') {
         this._selectedIndex = i
         this.ensureSelectedVisible()
@@ -421,6 +425,7 @@ class LogViewerNodeImpl extends LeafNode implements LogViewerNode {
     const start = this._selectedIndex < 0 ? this._filteredEntries.length : this._selectedIndex
     for (let i = start - 1; i >= 0; i--) {
       const entry = this._filteredEntries[i]
+      if (!entry) continue
       if (entry.level === 'error' || entry.level === 'fatal') {
         this._selectedIndex = i
         this.ensureSelectedVisible()
@@ -516,8 +521,10 @@ class LogViewerNodeImpl extends LeafNode implements LogViewerNode {
       case 'enter':
         if (this._selectedIndex >= 0 && this._selectedIndex < this._filteredEntries.length) {
           const entry = this._filteredEntries[this._selectedIndex]
-          for (const handler of this._onEntrySelectHandlers) {
-            handler(entry, this._selectedIndex)
+          if (entry) {
+            for (const handler of this._onEntrySelectHandlers) {
+              handler(entry, this._selectedIndex)
+            }
           }
         }
         return true
@@ -528,7 +535,7 @@ class LogViewerNodeImpl extends LeafNode implements LogViewerNode {
 
   // Mouse handling
   /** @internal */
-  handleMouse(x: number, y: number, action: string): boolean {
+  handleMouse(_x: number, y: number, action: string): boolean {
     if (!this._visible) return false
 
     const bounds = this._bounds
@@ -543,8 +550,10 @@ class LogViewerNodeImpl extends LeafNode implements LogViewerNode {
         this.markDirty()
 
         const entry = this._filteredEntries[clickedIndex]
-        for (const handler of this._onEntrySelectHandlers) {
-          handler(entry, clickedIndex)
+        if (entry) {
+          for (const handler of this._onEntrySelectHandlers) {
+            handler(entry, clickedIndex)
+          }
         }
         return true
       }
@@ -606,6 +615,7 @@ class LogViewerNodeImpl extends LeafNode implements LogViewerNode {
 
     for (let i = this._scrollOffset; i < endIndex; i++) {
       const entry = this._filteredEntries[i]
+      if (!entry) continue
       const y = bounds.y + (i - this._scrollOffset)
       const isSelected = this._isFocused && i === this._selectedIndex
 

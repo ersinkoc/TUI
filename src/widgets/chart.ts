@@ -302,7 +302,7 @@ class SparklineNodeImpl extends LeafNode implements SparklineNode {
   private _data: number[] = []
   private _min: number | null = null
   private _max: number | null = null
-  private _style: 'line' | 'area' | 'bar' = 'line'
+  private _sparklineStyle: 'line' | 'area' | 'bar' = 'line'
 
   constructor(props?: SparklineProps) {
     super()
@@ -310,7 +310,7 @@ class SparklineNodeImpl extends LeafNode implements SparklineNode {
       if (props.data) this._data = props.data
       if (props.min !== undefined) this._min = props.min
       if (props.max !== undefined) this._max = props.max
-      if (props.style) this._style = props.style
+      if (props.style) this._sparklineStyle = props.style
     }
   }
 
@@ -337,7 +337,7 @@ class SparklineNodeImpl extends LeafNode implements SparklineNode {
   }
 
   style(style: 'line' | 'area' | 'bar'): this {
-    this._style = style
+    this._sparklineStyle = style
     this.markDirty()
     return this
   }
@@ -379,7 +379,7 @@ class SparklineNodeImpl extends LeafNode implements SparklineNode {
         Math.floor(normalized * SPARK_CHARS.length)
       )
 
-      if (this._style === 'bar' && height > 1) {
+      if (this._sparklineStyle === 'bar' && height > 1) {
         // Multi-line bar style
         const barHeight = Math.ceil(normalized * height)
         for (let row = 0; row < height; row++) {
@@ -468,7 +468,7 @@ class GaugeNodeImpl extends LeafNode implements GaugeNode {
   private _showValue: boolean = false
   private _fillChar: string = '█'
   private _emptyChar: string = '░'
-  private _style: 'bar' | 'arc' = 'bar'
+  private _gaugeStyle: 'bar' | 'arc' = 'bar'
 
   constructor(props?: GaugeProps) {
     super()
@@ -480,7 +480,7 @@ class GaugeNodeImpl extends LeafNode implements GaugeNode {
       if (props.showValue !== undefined) this._showValue = props.showValue
       if (props.fillChar) this._fillChar = props.fillChar
       if (props.emptyChar) this._emptyChar = props.emptyChar
-      if (props.style) this._style = props.style
+      if (props.style) this._gaugeStyle = props.style
     }
   }
 
@@ -539,7 +539,7 @@ class GaugeNodeImpl extends LeafNode implements GaugeNode {
   }
 
   style(style: 'bar' | 'arc'): this {
-    this._style = style
+    this._gaugeStyle = style
     this.markDirty()
     return this
   }
@@ -558,7 +558,7 @@ class GaugeNodeImpl extends LeafNode implements GaugeNode {
     const labelWidth = this._showPercent ? 5 : (this._showValue ? 8 : 0)
     const barWidth = width - labelWidth
 
-    if (this._style === 'arc' && height >= 3) {
+    if (this._gaugeStyle === 'arc' && height >= 3) {
       this.renderArc(buffer, x, y, width, height, fg, bg, percentVal)
     } else {
       this.renderBar(buffer, x, y, barWidth, fg, bg, percentVal)
@@ -606,7 +606,7 @@ class GaugeNodeImpl extends LeafNode implements GaugeNode {
     percent: number
   ): void {
     // Simple arc representation using characters
-    const arcChars = ['╭', '─', '╮', '│', ' ', '│', '╰', '─', '╯']
+    // Arc characters: ['╭', '─', '╮', '│', ' ', '│', '╰', '─', '╯']
     const centerX = x + Math.floor(width / 2)
     const centerY = y + Math.floor(height / 2)
 

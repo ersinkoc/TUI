@@ -63,7 +63,11 @@ export {
   setTitle,
   bell,
   enableBracketedPaste,
-  disableBracketedPaste
+  disableBracketedPaste,
+  // ANSI sanitization
+  sanitizeAnsi,
+  stripAllAnsi,
+  hasDangerousAnsi
 } from './ansi'
 
 // Color utilities
@@ -96,7 +100,11 @@ export {
   truncateToWidth,
   padToWidth,
   wrapText,
-  sliceByWidth
+  sliceByWidth,
+  // Grapheme cluster support
+  splitGraphemes,
+  graphemeWidth,
+  truncateByGrapheme
 } from './unicode'
 
 // Re-export with aliases from unicode
@@ -147,10 +155,7 @@ export function isFullWidth(codePoint: number): boolean {
   )
 }
 
-export function stripAnsi(str: string): string {
-   
-  return str.replace(/\x1b\[[0-9;]*m/g, '')
-}
+export { stripAllAnsi as stripAnsi } from './ansi'
 
 import { stringWidth } from './unicode'
 
@@ -271,3 +276,11 @@ export {
 } from './easing'
 
 export type { EasingFunction, EasingName } from './easing'
+
+// Event emitter utilities
+export {
+  EventEmitter,
+  createEventEmitter
+} from './events'
+
+export type { EventHandler, EventMap, IEventEmitter } from './events'

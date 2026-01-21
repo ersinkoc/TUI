@@ -137,6 +137,16 @@ class SpinnerNodeImpl extends LeafNode implements SpinnerNode {
     return this
   }
 
+  /**
+   * Dispose of spinner and clean up timer.
+   */
+  override dispose(): void {
+    if (this._disposed) return
+    // Stop timer before disposing
+    this.stop()
+    super.dispose()
+  }
+
   // Render
   render(buffer: Buffer, parentStyle: CellStyle): void {
     if (!this.isVisible) return

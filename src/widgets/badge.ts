@@ -5,9 +5,9 @@
 
 import type { Node, Buffer, CellStyle } from '../types'
 import { LeafNode } from './node'
-import { DEFAULT_FG, DEFAULT_BG } from '../utils/color'
+import { DEFAULT_BG } from '../utils/color'
 import { stringWidth, truncateToWidth } from '../utils/unicode'
-import { ATTR_INVERSE, ATTR_DIM, ATTR_BOLD } from '../constants'
+import { ATTR_BOLD } from '../constants'
 
 // ============================================================
 // Types

@@ -139,7 +139,7 @@ const PRIORITY_WEIGHTS: Record<ShortcutPriority, number> = {
 /**
  * Parse a key string into normalized form.
  */
-function normalizeKey(key: string): string {
+export function normalizeKey(key: string): string {
   return key
     .toLowerCase()
     .replace(/\s+/g, ' ')

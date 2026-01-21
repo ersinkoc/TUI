@@ -157,7 +157,7 @@ class HeatmapNodeImpl extends LeafNode implements HeatmapNode {
   }
 
   get cols(): number {
-    return this._data.length > 0 ? this._data[0].length : 0
+    return this._data.length > 0 ? (this._data[0]?.length ?? 0) : 0
   }
 
   get selectedRow(): number {
@@ -171,8 +171,8 @@ class HeatmapNodeImpl extends LeafNode implements HeatmapNode {
   get selectedValue(): number | null {
     if (this._selectedRow >= 0 && this._selectedRow < this._data.length) {
       const row = this._data[this._selectedRow]
-      if (this._selectedCol >= 0 && this._selectedCol < row.length) {
-        return row[this._selectedCol]
+      if (row && this._selectedCol >= 0 && this._selectedCol < row.length) {
+        return row[this._selectedCol] ?? null
       }
     }
     return null
@@ -210,7 +210,7 @@ class HeatmapNodeImpl extends LeafNode implements HeatmapNode {
     if (colors.length === 0) return DEFAULT_FG
 
     const index = Math.floor(normalized * (colors.length - 1))
-    return colors[Math.max(0, Math.min(colors.length - 1, index))]
+    return colors[Math.max(0, Math.min(colors.length - 1, index))] ?? DEFAULT_FG
   }
 
   // Configuration
@@ -468,7 +468,8 @@ class HeatmapNodeImpl extends LeafNode implements HeatmapNode {
     if (hasColLabels) {
       let x = bounds.x + labelWidth
       for (let col = 0; col < this._columnLabels.length && x < bounds.x + bounds.width; col++) {
-        const label = truncateToWidth(this._columnLabels[col], this._cellWidth)
+        const colLabel = this._columnLabels[col] ?? ''
+        const label = truncateToWidth(colLabel, this._cellWidth)
         const padded = padToWidth(label, this._cellWidth, 'center')
         buffer.write(x, currentY, padded, { fg, bg, attrs: ATTR_DIM })
         x += this._cellWidth
@@ -479,18 +480,20 @@ class HeatmapNodeImpl extends LeafNode implements HeatmapNode {
     // Data rows
     for (let row = 0; row < this._data.length && currentY < bounds.y + bounds.height; row++) {
       const rowData = this._data[row]
+      if (!rowData) continue
       let x = bounds.x
 
       // Row label
       if (labelWidth > 0 && row < this._rowLabels.length) {
-        const label = truncateToWidth(this._rowLabels[row], labelWidth - 1)
+        const rowLabel = this._rowLabels[row] ?? ''
+        const label = truncateToWidth(rowLabel, labelWidth - 1)
         buffer.write(x, currentY, label + ' ', { fg, bg, attrs: ATTR_DIM })
       }
       x += labelWidth
 
       // Cells
       for (let col = 0; col < rowData.length && x + this._cellWidth <= bounds.x + bounds.width; col++) {
-        const value = rowData[col]
+        const value = rowData[col] ?? 0
         const color = this.getColor(value)
         const isSelected = this._isFocused && row === this._selectedRow && col === this._selectedCol
 
@@ -519,7 +522,7 @@ class HeatmapNodeImpl extends LeafNode implements HeatmapNode {
     value: number,
     color: number,
     isSelected: boolean,
-    fg: number,
+    _fg: number,
     bg: number
   ): void {
     const cellChar = '\u2588' // █

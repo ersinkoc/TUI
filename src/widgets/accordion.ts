@@ -6,7 +6,7 @@
 import type { Node, Buffer, CellStyle } from '../types'
 import { ContainerNode, BaseNode } from './node'
 import { DEFAULT_FG, DEFAULT_BG } from '../utils/color'
-import { ATTR_DIM, ATTR_BOLD, ATTR_INVERSE } from '../constants'
+import { ATTR_DIM, ATTR_INVERSE } from '../constants'
 import { stringWidth, truncateToWidth } from '../utils/unicode'
 
 // ============================================================
@@ -433,7 +433,7 @@ class AccordionNodeImpl extends ContainerNode implements AccordionNode {
     return true
   }
 
-  private getPanelContentHeight(panel: AccordionPanel): number {
+  private getPanelContentHeight(_panel: AccordionPanel): number {
     // Default content height, can be customized
     return 3
   }

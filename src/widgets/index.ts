@@ -106,7 +106,7 @@ export { barchart, sparkline, gauge } from './chart'
 export type {
   BarChartProps,
   BarChartNode,
-  BarChartDataPoint,
+  BarDataPoint,
   SparklineProps,
   SparklineNode,
   GaugeProps,
@@ -115,7 +115,7 @@ export type {
 
 // Wizard/Stepper
 export { wizard } from './wizard'
-export type { WizardProps, WizardNode, WizardStep, WizardStepStatus } from './wizard'
+export type { WizardProps, WizardNode, WizardStep, StepStatus } from './wizard'
 
 // Form with validation
 export { form } from './form'

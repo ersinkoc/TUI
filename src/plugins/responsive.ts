@@ -166,6 +166,8 @@ export function responsivePlugin(options: ResponsivePluginOptions = {}): Plugin 
   const { breakpoints: customBreakpoints, debug = false } = options
 
   let _app: TUIApp | null = null
+  // Make linter happy - _app is stored for potential future use
+  void _app
   let currentWidth = 80
   let currentHeight = 24
   let currentBreakpoint: string = 'md'

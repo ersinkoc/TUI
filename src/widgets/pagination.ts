@@ -6,7 +6,7 @@
 import type { Node, Buffer, CellStyle } from '../types'
 import { LeafNode } from './node'
 import { DEFAULT_FG, DEFAULT_BG } from '../utils/color'
-import { stringWidth, padToWidth } from '../utils/unicode'
+import { stringWidth } from '../utils/unicode'
 import { ATTR_DIM, ATTR_BOLD, ATTR_INVERSE } from '../constants'
 
 // ============================================================
@@ -117,7 +117,7 @@ class PaginationNodeImpl extends LeafNode implements PaginationNode {
   private _totalItems: number = 0
   private _itemsPerPage: number = 10
   private _currentPage: number = 0
-  private _style: PaginationStyle = 'full'
+  private _paginationStyle: PaginationStyle = 'full'
   private _showFirstLast: boolean = true
   private _showPageNumbers: boolean = true
   private _showItemCount: boolean = true
@@ -133,6 +133,9 @@ class PaginationNodeImpl extends LeafNode implements PaginationNode {
   private _focusedButton: 'first' | 'prev' | 'page' | 'next' | 'last' = 'page'
   private _focusedPageIndex: number = 0
 
+  /** Get focused page index */
+  get focusedPageIndex(): number { return this._focusedPageIndex }
+
   private _onPageChangeHandlers: ((page: number, pageInfo: PageInfo) => void)[] = []
 
   constructor(props?: PaginationProps) {
@@ -141,7 +144,7 @@ class PaginationNodeImpl extends LeafNode implements PaginationNode {
       if (props.totalItems !== undefined) this._totalItems = props.totalItems
       if (props.itemsPerPage !== undefined) this._itemsPerPage = props.itemsPerPage
       if (props.currentPage !== undefined) this._currentPage = props.currentPage
-      if (props.style) this._style = props.style
+      if (props.style) this._paginationStyle = props.style
       if (props.showFirstLast !== undefined) this._showFirstLast = props.showFirstLast
       if (props.showPageNumbers !== undefined) this._showPageNumbers = props.showPageNumbers
       if (props.showItemCount !== undefined) this._showItemCount = props.showItemCount
@@ -217,7 +220,7 @@ class PaginationNodeImpl extends LeafNode implements PaginationNode {
   }
 
   style(style: PaginationStyle): this {
-    this._style = style
+    this._paginationStyle = style
     this.markDirty()
     return this
   }
@@ -354,13 +357,15 @@ class PaginationNodeImpl extends LeafNode implements PaginationNode {
 
   private moveFocus(direction: number): void {
     const buttons = this.getNavigableButtons()
+    if (buttons.length === 0) return
     const currentIndex = buttons.indexOf(this._focusedButton)
     let newIndex = currentIndex + direction
 
     if (newIndex < 0) newIndex = buttons.length - 1
     if (newIndex >= buttons.length) newIndex = 0
 
-    this._focusedButton = buttons[newIndex]
+    const newButton = buttons[newIndex]
+    if (newButton) this._focusedButton = newButton
     this.markDirty()
   }
 
@@ -398,7 +403,7 @@ class PaginationNodeImpl extends LeafNode implements PaginationNode {
 
   // Mouse handling
   /** @internal */
-  handleMouse(x: number, y: number, action: string): boolean {
+  handleMouse(x: number, _y: number, action: string): boolean {
     if (!this._visible) return false
 
     const bounds = this._bounds
@@ -503,7 +508,7 @@ class PaginationNodeImpl extends LeafNode implements PaginationNode {
     const fg = parentStyle.fg ?? DEFAULT_FG
     const bg = parentStyle.bg ?? DEFAULT_BG
 
-    switch (this._style) {
+    switch (this._paginationStyle) {
       case 'full':
         this.renderFull(buffer, bounds, fg, bg)
         break
@@ -553,7 +558,7 @@ class PaginationNodeImpl extends LeafNode implements PaginationNode {
       const lastVisible = pages[pages.length - 1]
 
       // Ellipsis at start
-      if (firstVisible > 0) {
+      if (firstVisible !== undefined && firstVisible > 0) {
         buffer.write(currentX, bounds.y, '...', { fg, bg, attrs: ATTR_DIM })
         currentX += 4
       }
@@ -571,7 +576,7 @@ class PaginationNodeImpl extends LeafNode implements PaginationNode {
       }
 
       // Ellipsis at end
-      if (lastVisible < this.totalPages - 1) {
+      if (lastVisible !== undefined && lastVisible < this.totalPages - 1) {
         buffer.write(currentX, bounds.y, '...', { fg, bg, attrs: ATTR_DIM })
         currentX += 4
       }

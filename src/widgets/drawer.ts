@@ -343,7 +343,8 @@ class DrawerNodeImpl extends ContainerNode implements DrawerNode {
   selectItem(id: string): this {
     const flatItems = this.flattenItems()
     const index = flatItems.findIndex((i) => i.id === id)
-    if (index !== -1 && !flatItems[index].disabled) {
+    const item = flatItems[index]
+    if (index !== -1 && item && !item.disabled) {
       this._selectedIndex = index
       this.markDirty()
     }
@@ -417,7 +418,8 @@ class DrawerNodeImpl extends ContainerNode implements DrawerNode {
     if (this._selectedIndex < 0) {
       const flatItems = this.flattenItems()
       for (let i = 0; i < flatItems.length; i++) {
-        if (!flatItems[i].disabled && !flatItems[i].divider) {
+        const item = flatItems[i]
+        if (item && !item.disabled && !item.divider) {
           this._selectedIndex = i
           break
         }
@@ -654,6 +656,7 @@ class DrawerNodeImpl extends ContainerNode implements DrawerNode {
 
     for (let i = 0; i < Math.min(flatItems.length, contentHeight); i++) {
       const item = flatItems[i]
+      if (!item) continue
       const itemY = contentStartY + i
       const itemX = drawerBounds.x + borderOffset
 

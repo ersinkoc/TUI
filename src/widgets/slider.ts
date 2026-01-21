@@ -443,7 +443,7 @@ class SliderNodeImpl extends LeafNode implements SliderNode {
     buffer: Buffer,
     x: number,
     y: number,
-    width: number,
+    _width: number,
     height: number,
     fg: number,
     bg: number,

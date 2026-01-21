@@ -3,7 +3,7 @@
  * @packageDocumentation
  */
 
-import type { Node, Buffer, CellStyle, Dimension } from '../types'
+import type { Node, Buffer, CellStyle } from '../types'
 import { ContainerNode, BaseNode } from './node'
 
 // ============================================================
@@ -158,7 +158,7 @@ class GridNodeImpl extends ContainerNode implements GridNode {
   }
 
   // Content
-  add(node: Node, col?: number, row?: number, colSpan?: number, rowSpan?: number): this {
+  override add(node: Node, col?: number, row?: number, colSpan?: number, rowSpan?: number): this {
     const cellCol = col ?? this._autoCol
     const cellRow = row ?? this._autoRow
 
@@ -191,7 +191,7 @@ class GridNodeImpl extends ContainerNode implements GridNode {
     return this.add(node, col, row, colSpan, rowSpan)
   }
 
-  remove(node: Node): this {
+  override remove(node: Node): this {
     const index = this._cells.findIndex(c => c.node === node)
     if (index !== -1) {
       this._cells.splice(index, 1)
@@ -203,7 +203,7 @@ class GridNodeImpl extends ContainerNode implements GridNode {
     return this
   }
 
-  clear(): this {
+  override clear(): this {
     for (const cell of this._cells) {
       if (cell.node instanceof BaseNode) {
         cell.node._parent = null

@@ -6,10 +6,10 @@
 import type { Node, Buffer, CellStyle } from '../types'
 import { ContainerNode } from './node'
 import { DEFAULT_FG, DEFAULT_BG } from '../utils/color'
-import { stringWidth, truncateToWidth, padToWidth } from '../utils/unicode'
+import { stringWidth, truncateToWidth } from '../utils/unicode'
 import { BORDER_CHARS } from '../utils/border'
 import { drawRect } from '../core/buffer'
-import { ATTR_INVERSE, ATTR_DIM, ATTR_BOLD } from '../constants'
+import { ATTR_DIM, ATTR_BOLD } from '../constants'
 
 // ============================================================
 // Types
@@ -413,7 +413,6 @@ class PanelNodeImpl extends ContainerNode implements PanelNode {
 
     const borderOffset = this._border !== 'none' ? 1 : 0
     const headerOffset = this._showHeader ? this._headerHeight : 0
-    const footerOffset = this._footer ? 1 : 0
 
     // Calculate actual height (collapsed = header + border only)
     const actualHeight = this._collapsed
@@ -436,7 +435,7 @@ class PanelNodeImpl extends ContainerNode implements PanelNode {
       const contentBounds = this.contentBounds
       // Set bounds on content node
       ;(this._contentNode as any)._bounds = contentBounds
-      this._contentNode.render(buffer, parentStyle)
+      ;(this._contentNode as any).render(buffer, parentStyle)
     }
 
     // Draw footer

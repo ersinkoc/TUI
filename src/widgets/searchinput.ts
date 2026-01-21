@@ -174,6 +174,10 @@ class SearchInputNodeImpl extends LeafNode implements SearchInputNode {
     return this._suggestionsOpen && this._suggestions.length > 0
   }
 
+  get isCaseSensitive(): boolean {
+    return this._caseSensitive
+  }
+
   // Configuration
   placeholder(text: string): this {
     this._placeholder = text
@@ -300,12 +304,14 @@ class SearchInputNodeImpl extends LeafNode implements SearchInputNode {
   submit(): this {
     if (this._selectedSuggestionIndex >= 0 && this._selectedSuggestionIndex < this._suggestions.length) {
       const suggestion = this._suggestions[this._selectedSuggestionIndex]
-      this._value = suggestion.text
-      this._cursorPosition = suggestion.text.length
-      this.clearSuggestions()
+      if (suggestion) {
+        this._value = suggestion.text
+        this._cursorPosition = suggestion.text.length
+        this.clearSuggestions()
 
-      for (const handler of this._onSuggestionSelectHandlers) {
-        handler(suggestion, this._selectedSuggestionIndex)
+        for (const handler of this._onSuggestionSelectHandlers) {
+          handler(suggestion, this._selectedSuggestionIndex)
+        }
       }
     }
 
@@ -325,17 +331,19 @@ class SearchInputNodeImpl extends LeafNode implements SearchInputNode {
   selectSuggestion(index: number): this {
     if (index >= 0 && index < this._suggestions.length) {
       const suggestion = this._suggestions[index]
-      this._value = suggestion.text
-      this._cursorPosition = suggestion.text.length
-      this._selectedSuggestionIndex = -1
-      this._suggestionsOpen = false
-      this.markDirty()
+      if (suggestion) {
+        this._value = suggestion.text
+        this._cursorPosition = suggestion.text.length
+        this._selectedSuggestionIndex = -1
+        this._suggestionsOpen = false
+        this.markDirty()
 
-      for (const handler of this._onSuggestionSelectHandlers) {
-        handler(suggestion, index)
-      }
-      for (const handler of this._onChangeHandlers) {
-        handler(this._value)
+        for (const handler of this._onSuggestionSelectHandlers) {
+          handler(suggestion, index)
+        }
+        for (const handler of this._onChangeHandlers) {
+          handler(this._value)
+        }
       }
     }
     return this
@@ -652,7 +660,7 @@ class SearchInputNodeImpl extends LeafNode implements SearchInputNode {
       const cursorX = inputX + this._cursorPosition - this._scrollOffset
       if (cursorX >= inputX && cursorX < inputX + inputWidth) {
         const cursorChar = this._cursorPosition < this._value.length
-          ? this._value[this._cursorPosition]
+          ? (this._value[this._cursorPosition] ?? ' ')
           : ' '
         buffer.set(cursorX, bounds.y, { char: cursorChar, fg: bg, bg: fg, attrs: 0 })
       }
@@ -681,6 +689,8 @@ class SearchInputNodeImpl extends LeafNode implements SearchInputNode {
 
     for (let i = 0; i < this._suggestions.length && startY + i < maxY; i++) {
       const suggestion = this._suggestions[i]
+      if (!suggestion) continue
+
       const y = startY + i
       const isSelected = i === this._selectedSuggestionIndex
 

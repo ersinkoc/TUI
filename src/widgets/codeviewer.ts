@@ -194,6 +194,10 @@ class CodeViewerNodeImpl extends LeafNode implements CodeViewerNode {
     return this._code
   }
 
+  get lang(): CodeLanguage {
+    return this._language
+  }
+
   // Configuration
   code(content: string): this {
     this.setCode(content)
@@ -593,7 +597,7 @@ class CodeViewerNodeImpl extends LeafNode implements CodeViewerNode {
     const endIndex = Math.min(this._scrollOffset + visibleLines, this._lines.length)
 
     for (let i = this._scrollOffset; i < endIndex; i++) {
-      const line = this._lines[i]
+      const line = this._lines[i] ?? ''
       const lineNum = i + this._startLineNumber
       const rowY = bounds.y + (i - this._scrollOffset)
 

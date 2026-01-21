@@ -331,3 +331,44 @@ export const CLEAR_SCREEN = `${CSI}2J`
 
 /** Clear current line */
 export const CLEAR_LINE = `${CSI}2K`
+
+// ============================================================
+// Widget Defaults
+// ============================================================
+
+/** Minimum width for modal dialogs */
+export const MODAL_MIN_WIDTH = 20
+
+/** Minimum height for modal dialogs */
+export const MODAL_MIN_HEIGHT = 5
+
+/** Modal margin from screen edges */
+export const MODAL_MARGIN_X = 4
+export const MODAL_MARGIN_Y = 2
+
+/** Default modal width ratio (0.6 = 60% of screen) */
+export const MODAL_DEFAULT_WIDTH_RATIO = 0.6
+
+/** Default modal height ratio (0.4 = 40% of screen) */
+export const MODAL_DEFAULT_HEIGHT_RATIO = 0.4
+
+/** Default list page size for keyboard navigation */
+export const LIST_DEFAULT_PAGE_SIZE = 10
+
+/** Default tree indentation width */
+export const TREE_DEFAULT_INDENT = 2
+
+/** Default scrollbar minimum thumb size */
+export const SCROLLBAR_MIN_THUMB_SIZE = 1
+
+/** Default input cursor blink interval in ms */
+export const INPUT_CURSOR_BLINK_INTERVAL = 530
+
+/** Maximum navigation history size */
+export const ROUTER_MAX_HISTORY_SIZE = 50
+
+/** Maximum redirect depth to prevent infinite loops */
+export const ROUTER_MAX_REDIRECT_DEPTH = 10
+
+/** Maximum route pattern cache size */
+export const ROUTER_MAX_CACHE_SIZE = 100

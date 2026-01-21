@@ -193,7 +193,7 @@ class DataGridNodeImpl<T = any> extends LeafNode implements DataGridNode<T> {
     return Array.from(this._selectedIndices)
       .sort((a, b) => a - b)
       .map((i) => sortedData[i])
-      .filter(Boolean)
+      .filter((row): row is T => row !== undefined)
   }
 
   get selectedIndices(): number[] {
@@ -418,7 +418,7 @@ class DataGridNodeImpl<T = any> extends LeafNode implements DataGridNode<T> {
 
   private emitSelectEvent(): void {
     const sortedData = this.getSortedData()
-    const rows = this.selectedIndices.map((i) => sortedData[i]).filter(Boolean)
+    const rows = this.selectedIndices.map((i) => sortedData[i]).filter((row): row is T => row !== undefined)
     for (const handler of this._onSelectHandlers) {
       handler(rows, this.selectedIndices)
     }
@@ -692,10 +692,11 @@ class DataGridNodeImpl<T = any> extends LeafNode implements DataGridNode<T> {
     let currentX = this._showRowNumbers ? 4 : 0
 
     for (let i = 0; i < widths.length; i++) {
-      if (relX >= currentX && relX < currentX + widths[i]) {
+      const colWidth = widths[i] ?? 0
+      if (relX >= currentX && relX < currentX + colWidth) {
         return i
       }
-      currentX += widths[i] + 1 // +1 for separator
+      currentX += colWidth + 1 // +1 for separator
     }
 
     return -1
@@ -734,11 +735,11 @@ class DataGridNodeImpl<T = any> extends LeafNode implements DataGridNode<T> {
       const remainingWidth = availableWidth - totalFixed
       for (let i = 0; i < this._columns.length; i++) {
         const col = this._columns[i]
-        if (col.flex) {
+        if (col && col.flex) {
           const flexWidth = Math.floor((remainingWidth * col.flex) / totalFlex)
           widths[i] = Math.max(flexWidth, col.minWidth ?? 5)
           if (col.maxWidth) {
-            widths[i] = Math.min(widths[i], col.maxWidth)
+            widths[i] = Math.min(widths[i] ?? 0, col.maxWidth)
           }
         }
       }
@@ -801,6 +802,8 @@ class DataGridNodeImpl<T = any> extends LeafNode implements DataGridNode<T> {
 
     for (let i = startIndex; i < endIndex; i++) {
       const row = sortedData[i]
+      if (!row) continue
+
       const rowY = bounds.y + borderOffset + 1 + (i - startIndex)
       const isSelected = this._selectedIndices.has(i)
       const isFocused = this._isFocused && this._focusedIndex === i
@@ -821,7 +824,7 @@ class DataGridNodeImpl<T = any> extends LeafNode implements DataGridNode<T> {
     buffer: Buffer,
     x: number,
     y: number,
-    width: number,
+    _width: number,
     columnWidths: number[],
     fg: number,
     bg: number
@@ -838,6 +841,7 @@ class DataGridNodeImpl<T = any> extends LeafNode implements DataGridNode<T> {
     for (let i = 0; i < this._columns.length; i++) {
       const col = this._columns[i]
       const colWidth = columnWidths[i]
+      if (!col || colWidth === undefined) continue
 
       let headerText = col.header
 
@@ -905,6 +909,7 @@ class DataGridNodeImpl<T = any> extends LeafNode implements DataGridNode<T> {
     for (let i = 0; i < this._columns.length; i++) {
       const col = this._columns[i]
       const colWidth = columnWidths[i]
+      if (!col || colWidth === undefined) continue
 
       // Get cell value
       let cellValue: string

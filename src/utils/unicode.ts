@@ -395,3 +395,208 @@ export function sliceByWidth(str: string, start: number, end?: number): string {
 
   return chars.slice(startIndex, endIndex).join('')
 }
+
+// ============================================================
+// Grapheme Cluster Support
+// ============================================================
+
+// Zero Width Joiner
+const ZWJ = 0x200d
+
+// Variation Selectors
+const VS15 = 0xfe0e // Text presentation
+const VS16 = 0xfe0f // Emoji presentation
+
+/**
+ * Check if code point is a Zero Width Joiner.
+ */
+function isZWJ(code: number): boolean {
+  return code === ZWJ
+}
+
+/**
+ * Check if code point is a variation selector.
+ */
+function isVariationSelector(code: number): boolean {
+  return code === VS15 || code === VS16
+}
+
+/**
+ * Check if code point is a Regional Indicator (for flag emoji).
+ */
+function isRegionalIndicator(code: number): boolean {
+  return code >= 0x1f1e6 && code <= 0x1f1ff
+}
+
+/**
+ * Check if code point is a skin tone modifier.
+ */
+function isSkinToneModifier(code: number): boolean {
+  return code >= 0x1f3fb && code <= 0x1f3ff
+}
+
+/**
+ * Split string into grapheme clusters using Intl.Segmenter if available,
+ * with fallback for older environments.
+ *
+ * @param str - Input string
+ * @returns Array of grapheme clusters
+ *
+ * @example
+ * ```typescript
+ * splitGraphemes('👨‍👩‍👧‍👦')  // ['👨‍👩‍👧‍👦'] (family emoji as single cluster)
+ * splitGraphemes('🇹🇷')        // ['🇹🇷'] (flag as single cluster)
+ * splitGraphemes('hello')      // ['h', 'e', 'l', 'l', 'o']
+ * ```
+ */
+export function splitGraphemes(str: string): string[] {
+  // Use Intl.Segmenter if available (modern browsers and Node.js 16+)
+  if (typeof Intl !== 'undefined' && 'Segmenter' in Intl) {
+    // Cast to any to handle environments where Intl.Segmenter types aren't available
+    const SegmenterClass = (Intl as Record<string, unknown>).Segmenter as new (
+      locales?: string | string[],
+      options?: { granularity?: 'grapheme' | 'word' | 'sentence' }
+    ) => { segment(str: string): Iterable<{ segment: string }> }
+    const segmenter = new SegmenterClass(undefined, { granularity: 'grapheme' })
+    return Array.from(segmenter.segment(str), s => s.segment)
+  }
+
+  // Fallback: basic grapheme cluster detection
+  // This handles common cases but may not cover all edge cases
+  const graphemes: string[] = []
+  const chars = Array.from(str)
+  let i = 0
+
+  while (i < chars.length) {
+    let cluster = chars[i]!
+    const code = cluster.codePointAt(0) ?? 0
+    i++
+
+    // Handle regional indicators (flags) - always pairs
+    if (isRegionalIndicator(code) && i < chars.length) {
+      const nextCode = chars[i]?.codePointAt(0) ?? 0
+      if (isRegionalIndicator(nextCode)) {
+        cluster += chars[i]!
+        i++
+      }
+    }
+
+    // Handle ZWJ sequences and modifiers
+    while (i < chars.length) {
+      const nextCode = chars[i]?.codePointAt(0) ?? 0
+
+      // ZWJ joins the next character
+      if (isZWJ(nextCode)) {
+        cluster += chars[i]!
+        i++
+        if (i < chars.length) {
+          cluster += chars[i]!
+          i++
+        }
+        continue
+      }
+
+      // Variation selectors and skin tone modifiers attach to previous
+      if (isVariationSelector(nextCode) || isSkinToneModifier(nextCode)) {
+        cluster += chars[i]!
+        i++
+        continue
+      }
+
+      // Combining characters attach to previous
+      if (
+        (nextCode >= 0x0300 && nextCode <= 0x036f) ||
+        (nextCode >= 0x1ab0 && nextCode <= 0x1aff) ||
+        (nextCode >= 0x1dc0 && nextCode <= 0x1dff) ||
+        (nextCode >= 0x20d0 && nextCode <= 0x20ff) ||
+        (nextCode >= 0xfe20 && nextCode <= 0xfe2f)
+      ) {
+        cluster += chars[i]!
+        i++
+        continue
+      }
+
+      break
+    }
+
+    graphemes.push(cluster)
+  }
+
+  return graphemes
+}
+
+/**
+ * Get display width of a string using grapheme cluster awareness.
+ * More accurate than stringWidth for emoji and complex scripts.
+ *
+ * @param str - Input string
+ * @returns Total display width
+ *
+ * @example
+ * ```typescript
+ * graphemeWidth('👨‍👩‍👧‍👦')  // 2 (family emoji takes 2 cells)
+ * graphemeWidth('🇹🇷')        // 2 (flag takes 2 cells)
+ * graphemeWidth('hello')      // 5
+ * ```
+ */
+export function graphemeWidth(str: string): number {
+  const graphemes = splitGraphemes(str)
+  let width = 0
+
+  for (const grapheme of graphemes) {
+    // Get the base character width (first code point determines width)
+    const code = grapheme.codePointAt(0) ?? 0
+
+    // Emoji and flags are typically 2 cells wide
+    if (isWideCodePoint(code) || isRegionalIndicator(code)) {
+      width += 2
+    } else if (code >= 32) {
+      width += 1
+    }
+    // Control characters and combining marks add 0 width
+  }
+
+  return width
+}
+
+/**
+ * Truncate string by grapheme clusters to fit within display width.
+ * More accurate than truncateToWidth for emoji and complex scripts.
+ *
+ * @param str - Input string
+ * @param maxWidth - Maximum display width
+ * @param ellipsis - Ellipsis string to append (default: '')
+ * @returns Truncated string
+ */
+export function truncateByGrapheme(str: string, maxWidth: number, ellipsis: string = ''): string {
+  const ellipsisWidth = graphemeWidth(ellipsis)
+  const targetWidth = maxWidth - ellipsisWidth
+
+  if (targetWidth <= 0) {
+    return ellipsis.slice(0, maxWidth)
+  }
+
+  const graphemes = splitGraphemes(str)
+  let width = 0
+  let result = ''
+
+  for (const grapheme of graphemes) {
+    const code = grapheme.codePointAt(0) ?? 0
+    let graphemeW = 1
+
+    if (isWideCodePoint(code) || isRegionalIndicator(code)) {
+      graphemeW = 2
+    } else if (code < 32) {
+      graphemeW = 0
+    }
+
+    if (width + graphemeW > targetWidth) {
+      return result + ellipsis
+    }
+
+    width += graphemeW
+    result += grapheme
+  }
+
+  return result
+}

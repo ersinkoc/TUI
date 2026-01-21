@@ -4,7 +4,7 @@
  */
 
 import type { Node, Buffer, CellStyle } from '../types'
-import { ContainerNode, BaseNode } from './node'
+import { ContainerNode } from './node'
 import { DEFAULT_FG, DEFAULT_BG } from '../utils/color'
 import { ATTR_DIM, ATTR_BOLD, ATTR_INVERSE } from '../constants'
 import { stringWidth, truncateToWidth } from '../utils/unicode'
@@ -18,7 +18,7 @@ import { stringWidth, truncateToWidth } from '../utils/unicode'
  */
 export interface ValidationResult {
   valid: boolean
-  message?: string
+  message?: string | undefined
 }
 
 /**
@@ -187,70 +187,70 @@ export interface FormNode extends Node {
 // Built-in Validators
 // ============================================================
 
-const builtinValidators: Record<BuiltinValidator, (config: ValidatorConfig) => Validator> = {
-  required: (config) => (value) => {
+const builtinValidators: Record<BuiltinValidator, (config: ValidatorConfig) => Validator<unknown>> = {
+  required: (config) => (value): ValidationResult => {
     const valid = value !== undefined && value !== null && value !== ''
     return { valid, message: valid ? undefined : (config.message ?? 'This field is required') }
   },
 
-  email: (config) => (value) => {
-    if (!value) return { valid: true }
+  email: (config) => (value): ValidationResult => {
+    if (!value) return { valid: true, message: undefined }
     const valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value))
     return { valid, message: valid ? undefined : (config.message ?? 'Invalid email address') }
   },
 
-  url: (config) => (value) => {
-    if (!value) return { valid: true }
+  url: (config) => (value): ValidationResult => {
+    if (!value) return { valid: true, message: undefined }
     try {
       new URL(String(value))
-      return { valid: true }
+      return { valid: true, message: undefined }
     } catch {
       return { valid: false, message: config.message ?? 'Invalid URL' }
     }
   },
 
-  number: (config) => (value) => {
-    if (!value && value !== 0) return { valid: true }
+  number: (config) => (value): ValidationResult => {
+    if (!value && value !== 0) return { valid: true, message: undefined }
     const valid = !isNaN(Number(value))
     return { valid, message: valid ? undefined : (config.message ?? 'Must be a number') }
   },
 
-  integer: (config) => (value) => {
-    if (!value && value !== 0) return { valid: true }
+  integer: (config) => (value): ValidationResult => {
+    if (!value && value !== 0) return { valid: true, message: undefined }
     const valid = Number.isInteger(Number(value))
     return { valid, message: valid ? undefined : (config.message ?? 'Must be an integer') }
   },
 
-  min: (config) => (value) => {
-    if (!value && value !== 0) return { valid: true }
+  min: (config) => (value): ValidationResult => {
+    if (!value && value !== 0) return { valid: true, message: undefined }
     const min = Number(config.value)
     const valid = Number(value) >= min
     return { valid, message: valid ? undefined : (config.message ?? `Must be at least ${min}`) }
   },
 
-  max: (config) => (value) => {
-    if (!value && value !== 0) return { valid: true }
+  max: (config) => (value): ValidationResult => {
+    if (!value && value !== 0) return { valid: true, message: undefined }
     const max = Number(config.value)
     const valid = Number(value) <= max
     return { valid, message: valid ? undefined : (config.message ?? `Must be at most ${max}`) }
   },
 
-  minLength: (config) => (value) => {
-    if (!value) return { valid: true }
+  minLength: (config) => (value): ValidationResult => {
+    if (!value) return { valid: true, message: undefined }
     const min = Number(config.value)
     const valid = String(value).length >= min
     return { valid, message: valid ? undefined : (config.message ?? `Must be at least ${min} characters`) }
   },
 
-  maxLength: (config) => (value) => {
-    if (!value) return { valid: true }
+  maxLength: (config) => (value): ValidationResult => {
+    if (!value) return { valid: true, message: undefined }
     const max = Number(config.value)
     const valid = String(value).length <= max
     return { valid, message: valid ? undefined : (config.message ?? `Must be at most ${max} characters`) }
   },
 
-  pattern: (config) => (value) => {
-    if (!value) return { valid: true }
+  pattern: (config) => (value): ValidationResult => {
+    if (!value) return { valid: true, message: undefined }
     const pattern = config.value instanceof RegExp ? config.value : new RegExp(String(config.value))
     const valid = pattern.test(String(value))
     return { valid, message: valid ? undefined : (config.message ?? 'Invalid format') }
@@ -266,11 +266,11 @@ class FormNodeImpl extends ContainerNode implements FormNode {
 
   private _fields: FormField[] = []
   private _fieldStates: Map<string, FieldState> = new Map()
-  private _layout: 'vertical' | 'horizontal' | 'inline' = 'vertical'
+  private _formLayout: 'vertical' | 'horizontal' | 'inline' = 'vertical'
   private _labelWidth: number = 15
   private _showErrors: boolean = true
   private _validateOnChange: boolean = true
-  private _validateOnBlur: boolean = true
+  private _validateOnBlurMode: boolean = true
   private _submitText: string = 'Submit'
   private _cancelText: string = 'Cancel'
   private _showCancel: boolean = false
@@ -293,11 +293,11 @@ class FormNodeImpl extends ContainerNode implements FormNode {
     super()
     if (props) {
       if (props.fields) this.fields(props.fields)
-      if (props.layout) this._layout = props.layout
+      if (props.layout) this._formLayout = props.layout
       if (props.labelWidth !== undefined) this._labelWidth = props.labelWidth
       if (props.showErrors !== undefined) this._showErrors = props.showErrors
       if (props.validateOnChange !== undefined) this._validateOnChange = props.validateOnChange
-      if (props.validateOnBlur !== undefined) this._validateOnBlur = props.validateOnBlur
+      if (props.validateOnBlur !== undefined) this._validateOnBlurMode = props.validateOnBlur
       if (props.submitText) this._submitText = props.submitText
       if (props.cancelText) this._cancelText = props.cancelText
       if (props.showCancel !== undefined) this._showCancel = props.showCancel
@@ -372,6 +372,10 @@ class FormNodeImpl extends ContainerNode implements FormNode {
     return this._focused
   }
 
+  get validateOnBlurEnabled(): boolean {
+    return this._validateOnBlurMode
+  }
+
   // Configuration
   fields(items: FormField[]): this {
     this._fields = items
@@ -421,7 +425,7 @@ class FormNodeImpl extends ContainerNode implements FormNode {
   }
 
   layout(layout: 'vertical' | 'horizontal' | 'inline'): this {
-    this._layout = layout
+    this._formLayout = layout
     this.markDirty()
     return this
   }
@@ -444,7 +448,7 @@ class FormNodeImpl extends ContainerNode implements FormNode {
   }
 
   validateOnBlur(enabled: boolean): this {
-    this._validateOnBlur = enabled
+    this._validateOnBlurMode = enabled
     return this
   }
 
@@ -534,7 +538,6 @@ class FormNodeImpl extends ContainerNode implements FormNode {
   setValue(id: string, value: unknown): this {
     const state = this._fieldStates.get(id)
     if (state) {
-      const oldValue = state.value
       state.value = value
       state.dirty = true
 
@@ -574,7 +577,7 @@ class FormNodeImpl extends ContainerNode implements FormNode {
     return this
   }
 
-  clear(): this {
+  override clear(): this {
     for (const field of this._fields) {
       const state = this._fieldStates.get(field.id)
       if (state) {
@@ -628,8 +631,11 @@ class FormNodeImpl extends ContainerNode implements FormNode {
       for (const config of field.validators) {
         if (config.type === 'custom' && config.validator) {
           validators.push(config.validator)
-        } else if (config.type in builtinValidators) {
-          validators.push(builtinValidators[config.type](config))
+        } else if (config.type !== 'custom' && config.type in builtinValidators) {
+          const validatorFactory = builtinValidators[config.type as BuiltinValidator]
+          if (validatorFactory) {
+            validators.push(validatorFactory(config))
+          }
         }
       }
     }
@@ -931,7 +937,7 @@ class FormNodeImpl extends ContainerNode implements FormNode {
   private getFieldHeight(field: FormField): number {
     let height = 1 // Label + input
 
-    if (this._layout === 'vertical') {
+    if (this._formLayout === 'vertical') {
       height = 2 // Label on one line, input on next
     }
 
@@ -1005,7 +1011,7 @@ class FormNodeImpl extends ContainerNode implements FormNode {
 
     let currentY = y
 
-    if (this._layout === 'vertical') {
+    if (this._formLayout === 'vertical') {
       // Render label
       let label = field.label
       if (field.required) label += ' *'
@@ -1165,7 +1171,7 @@ class FormNodeImpl extends ContainerNode implements FormNode {
     buffer: Buffer,
     x: number,
     y: number,
-    width: number,
+    _width: number,
     fg: number,
     bg: number
   ): void {

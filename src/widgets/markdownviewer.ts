@@ -7,7 +7,7 @@ import type { Node, Buffer, CellStyle } from '../types'
 import { LeafNode } from './node'
 import { DEFAULT_FG, DEFAULT_BG } from '../utils/color'
 import { stringWidth, truncateToWidth } from '../utils/unicode'
-import { ATTR_BOLD, ATTR_DIM, ATTR_ITALIC, ATTR_UNDERLINE, ATTR_INVERSE } from '../constants'
+import { ATTR_BOLD, ATTR_DIM, ATTR_ITALIC, ATTR_INVERSE } from '../constants'
 
 // ============================================================
 // Types
@@ -166,6 +166,14 @@ class MarkdownViewerNodeImpl extends LeafNode implements MarkdownViewerNode {
     return this._currentMatchIndex + 1
   }
 
+  get searchQuery(): string {
+    return this._searchQuery
+  }
+
+  get wordWrapEnabled(): boolean {
+    return this._wordWrap
+  }
+
   // Parse markdown content
   private parseContent(): void {
     this._parsedLines = []
@@ -201,7 +209,7 @@ class MarkdownViewerNodeImpl extends LeafNode implements MarkdownViewerNode {
 
     // Headings
     const headingMatch = line.match(/^(#{1,6})\s+(.*)$/)
-    if (headingMatch) {
+    if (headingMatch && headingMatch[1] && headingMatch[2] !== undefined) {
       return {
         type: 'heading',
         level: headingMatch[1].length,
@@ -222,7 +230,7 @@ class MarkdownViewerNodeImpl extends LeafNode implements MarkdownViewerNode {
 
     // Unordered list
     const ulMatch = line.match(/^(\s*)([-*+])\s+(.*)$/)
-    if (ulMatch) {
+    if (ulMatch && ulMatch[1] !== undefined && ulMatch[3] !== undefined) {
       return {
         type: 'list',
         indent: Math.floor(ulMatch[1].length / 2),
@@ -234,7 +242,7 @@ class MarkdownViewerNodeImpl extends LeafNode implements MarkdownViewerNode {
 
     // Ordered list
     const olMatch = line.match(/^(\s*)(\d+)\.\s+(.*)$/)
-    if (olMatch) {
+    if (olMatch && olMatch[1] !== undefined && olMatch[3] !== undefined) {
       return {
         type: 'list',
         indent: Math.floor(olMatch[1].length / 2),
@@ -294,12 +302,14 @@ class MarkdownViewerNodeImpl extends LeafNode implements MarkdownViewerNode {
     // Links [text](url)
     const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g
     while ((match = linkRegex.exec(text)) !== null) {
-      styles.push({
-        start: match.index,
-        end: match.index + match[0].length,
-        style: 'link',
-        url: match[2]
-      })
+      if (match[2]) {
+        styles.push({
+          start: match.index,
+          end: match.index + match[0].length,
+          style: 'link',
+          url: match[2]
+        })
+      }
     }
 
     // Strikethrough ~~text~~
@@ -425,6 +435,7 @@ class MarkdownViewerNodeImpl extends LeafNode implements MarkdownViewerNode {
     const lowerQuery = query.toLowerCase()
     for (let i = 0; i < this._parsedLines.length; i++) {
       const line = this._parsedLines[i]
+      if (!line) continue
       const content = this.stripMarkdown(line.content).toLowerCase()
       let pos = 0
       while ((pos = content.indexOf(lowerQuery, pos)) !== -1) {
@@ -476,6 +487,8 @@ class MarkdownViewerNodeImpl extends LeafNode implements MarkdownViewerNode {
     if (this._currentMatchIndex < 0 || this._currentMatchIndex >= this._matches.length) return
 
     const match = this._matches[this._currentMatchIndex]
+    if (!match) return
+
     const bounds = this._bounds
     const visibleLines = bounds ? bounds.height : 10
 
@@ -544,7 +557,7 @@ class MarkdownViewerNodeImpl extends LeafNode implements MarkdownViewerNode {
 
   // Mouse handling
   /** @internal */
-  handleMouse(x: number, y: number, action: string): boolean {
+  handleMouse(_x: number, _y: number, action: string): boolean {
     if (!this._visible) return false
 
     if (action === 'press') {
@@ -578,9 +591,10 @@ class MarkdownViewerNodeImpl extends LeafNode implements MarkdownViewerNode {
     const visibleLines = bounds.height
 
     // Get current match line for highlighting
-    const currentMatchLine = this._currentMatchIndex >= 0 && this._currentMatchIndex < this._matches.length
-      ? this._matches[this._currentMatchIndex].line
-      : -1
+    const currentMatch = this._currentMatchIndex >= 0 && this._currentMatchIndex < this._matches.length
+      ? this._matches[this._currentMatchIndex]
+      : undefined
+    const currentMatchLine = currentMatch?.line ?? -1
 
     for (let i = 0; i < visibleLines; i++) {
       const lineIndex = this._scrollOffset + i
@@ -594,6 +608,8 @@ class MarkdownViewerNodeImpl extends LeafNode implements MarkdownViewerNode {
       if (lineIndex >= this._parsedLines.length) continue
 
       const parsed = this._parsedLines[lineIndex]
+      if (!parsed) continue
+
       let x = bounds.x
 
       // Line numbers

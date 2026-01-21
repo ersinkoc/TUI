@@ -9,7 +9,16 @@ import { DEFAULT_FG, DEFAULT_BG } from '../utils/color'
 import { BORDER_CHARS } from '../utils/border'
 import { drawRect } from '../core/buffer'
 import { stringWidth, truncateToWidth } from '../utils/unicode'
-import { ATTR_BOLD, ATTR_DIM } from '../constants'
+import {
+  ATTR_BOLD,
+  ATTR_DIM,
+  MODAL_MIN_WIDTH,
+  MODAL_MIN_HEIGHT,
+  MODAL_MARGIN_X,
+  MODAL_MARGIN_Y,
+  MODAL_DEFAULT_WIDTH_RATIO,
+  MODAL_DEFAULT_HEIGHT_RATIO
+} from '../constants'
 import { text } from './text'
 import { input } from './input'
 import { box } from './box'
@@ -201,8 +210,9 @@ class ModalNodeImpl extends ContainerNode implements ModalNode {
 
   buttons(btns: ModalButton[]): this {
     this._buttons = btns
-    this._selectedButton = btns.findIndex(b => b.primary) ?? 0
-    if (this._selectedButton < 0) this._selectedButton = 0
+    // findIndex returns -1 when not found (not undefined), so ?? doesn't work
+    const primaryIndex = btns.findIndex(b => b.primary)
+    this._selectedButton = primaryIndex >= 0 ? primaryIndex : 0
     this.markDirty()
     return this
   }
@@ -361,12 +371,12 @@ class ModalNodeImpl extends ContainerNode implements ModalNode {
     const bg = parentStyle.bg ?? DEFAULT_BG
 
     // Calculate modal dimensions
-    let modalWidth = typeof this._layout.width === 'number' ? this._layout.width : Math.floor(width * 0.6)
-    let modalHeight = typeof this._layout.height === 'number' ? this._layout.height : Math.floor(height * 0.4)
+    let modalWidth = typeof this._layout.width === 'number' ? this._layout.width : Math.floor(width * MODAL_DEFAULT_WIDTH_RATIO)
+    let modalHeight = typeof this._layout.height === 'number' ? this._layout.height : Math.floor(height * MODAL_DEFAULT_HEIGHT_RATIO)
 
     // Ensure minimum size
-    modalWidth = Math.max(20, Math.min(modalWidth, width - 4))
-    modalHeight = Math.max(5, Math.min(modalHeight, height - 2))
+    modalWidth = Math.max(MODAL_MIN_WIDTH, Math.min(modalWidth, width - MODAL_MARGIN_X))
+    modalHeight = Math.max(MODAL_MIN_HEIGHT, Math.min(modalHeight, height - MODAL_MARGIN_Y))
 
     // Calculate position
     let modalX = x

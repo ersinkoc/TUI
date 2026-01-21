@@ -152,7 +152,6 @@ class JsonViewerNodeImpl extends LeafNode implements JsonViewerNode {
   private _isFocused: boolean = false
 
   // Search state
-  private _searchQuery: string = ''
   private _matches: number[] = []
   private _currentMatchIndex: number = -1
 
@@ -182,17 +181,19 @@ class JsonViewerNodeImpl extends LeafNode implements JsonViewerNode {
   }
 
   get currentPath(): string {
-    if (this._selectedIndex < 0 || this._selectedIndex >= this._flatNodes.length) {
+    const node = this._flatNodes[this._selectedIndex]
+    if (this._selectedIndex < 0 || this._selectedIndex >= this._flatNodes.length || !node) {
       return ''
     }
-    return this.getNodePath(this._flatNodes[this._selectedIndex])
+    return this.getNodePath(node)
   }
 
   get currentValue(): unknown {
-    if (this._selectedIndex < 0 || this._selectedIndex >= this._flatNodes.length) {
+    const node = this._flatNodes[this._selectedIndex]
+    if (this._selectedIndex < 0 || this._selectedIndex >= this._flatNodes.length || !node) {
       return undefined
     }
-    return this._flatNodes[this._selectedIndex].value
+    return node.value
   }
 
   get matchCount(): number {
@@ -336,9 +337,9 @@ class JsonViewerNodeImpl extends LeafNode implements JsonViewerNode {
 
   // Navigation
   expand(): this {
-    if (this._selectedIndex < 0 || this._selectedIndex >= this._flatNodes.length) return this
-
     const node = this._flatNodes[this._selectedIndex]
+    if (this._selectedIndex < 0 || this._selectedIndex >= this._flatNodes.length || !node) return this
+
     if ((node.type === 'object' || node.type === 'array') && !node.expanded) {
       node.expanded = true
       this.flattenTree()
@@ -348,9 +349,9 @@ class JsonViewerNodeImpl extends LeafNode implements JsonViewerNode {
   }
 
   collapse(): this {
-    if (this._selectedIndex < 0 || this._selectedIndex >= this._flatNodes.length) return this
-
     const node = this._flatNodes[this._selectedIndex]
+    if (this._selectedIndex < 0 || this._selectedIndex >= this._flatNodes.length || !node) return this
+
     if ((node.type === 'object' || node.type === 'array') && node.expanded) {
       node.expanded = false
       this.flattenTree()
@@ -391,9 +392,9 @@ class JsonViewerNodeImpl extends LeafNode implements JsonViewerNode {
   }
 
   toggle(): this {
-    if (this._selectedIndex < 0 || this._selectedIndex >= this._flatNodes.length) return this
-
     const node = this._flatNodes[this._selectedIndex]
+    if (this._selectedIndex < 0 || this._selectedIndex >= this._flatNodes.length || !node) return this
+
     if (node.type === 'object' || node.type === 'array') {
       node.expanded = !node.expanded
       this.flattenTree()
@@ -423,9 +424,9 @@ class JsonViewerNodeImpl extends LeafNode implements JsonViewerNode {
   }
 
   moveToParent(): this {
-    if (this._selectedIndex < 0 || this._selectedIndex >= this._flatNodes.length) return this
-
     const node = this._flatNodes[this._selectedIndex]
+    if (this._selectedIndex < 0 || this._selectedIndex >= this._flatNodes.length || !node) return this
+
     if (node.parent) {
       this._selectedIndex = node.parent.lineIndex
       this.ensureVisible()
@@ -436,11 +437,12 @@ class JsonViewerNodeImpl extends LeafNode implements JsonViewerNode {
   }
 
   moveToFirstChild(): this {
-    if (this._selectedIndex < 0 || this._selectedIndex >= this._flatNodes.length) return this
-
     const node = this._flatNodes[this._selectedIndex]
-    if (node.expanded && node.children.length > 0) {
-      this._selectedIndex = node.children[0].lineIndex
+    if (this._selectedIndex < 0 || this._selectedIndex >= this._flatNodes.length || !node) return this
+
+    const firstChild = node.children[0]
+    if (node.expanded && node.children.length > 0 && firstChild) {
+      this._selectedIndex = firstChild.lineIndex
       this.ensureVisible()
       this.emitSelect()
       this.markDirty()
@@ -496,8 +498,8 @@ class JsonViewerNodeImpl extends LeafNode implements JsonViewerNode {
   }
 
   private emitSelect(): void {
-    if (this._selectedIndex >= 0 && this._selectedIndex < this._flatNodes.length) {
-      const node = this._flatNodes[this._selectedIndex]
+    const node = this._flatNodes[this._selectedIndex]
+    if (this._selectedIndex >= 0 && this._selectedIndex < this._flatNodes.length && node) {
       const path = this.getNodePath(node)
       for (const handler of this._onSelectHandlers) {
         handler(path, node.value)
@@ -507,7 +509,6 @@ class JsonViewerNodeImpl extends LeafNode implements JsonViewerNode {
 
   // Search
   search(query: string): this {
-    this._searchQuery = query
     this._matches = []
     this._currentMatchIndex = -1
 
@@ -519,6 +520,7 @@ class JsonViewerNodeImpl extends LeafNode implements JsonViewerNode {
     const lowerQuery = query.toLowerCase()
     for (let i = 0; i < this._flatNodes.length; i++) {
       const node = this._flatNodes[i]
+      if (!node) continue
       const keyMatch = node.key?.toLowerCase().includes(lowerQuery)
       const valueMatch = this.valueToString(node.value).toLowerCase().includes(lowerQuery)
       if (keyMatch || valueMatch) {
@@ -528,7 +530,7 @@ class JsonViewerNodeImpl extends LeafNode implements JsonViewerNode {
 
     if (this._matches.length > 0) {
       this._currentMatchIndex = 0
-      this._selectedIndex = this._matches[0]
+      this._selectedIndex = this._matches[0] ?? 0
       this.ensureVisible()
     }
 
@@ -540,7 +542,7 @@ class JsonViewerNodeImpl extends LeafNode implements JsonViewerNode {
     if (this._matches.length === 0) return this
 
     this._currentMatchIndex = (this._currentMatchIndex + 1) % this._matches.length
-    this._selectedIndex = this._matches[this._currentMatchIndex]
+    this._selectedIndex = this._matches[this._currentMatchIndex] ?? 0
     this.ensureVisible()
     this.emitSelect()
     this.markDirty()
@@ -551,7 +553,7 @@ class JsonViewerNodeImpl extends LeafNode implements JsonViewerNode {
     if (this._matches.length === 0) return this
 
     this._currentMatchIndex = (this._currentMatchIndex - 1 + this._matches.length) % this._matches.length
-    this._selectedIndex = this._matches[this._currentMatchIndex]
+    this._selectedIndex = this._matches[this._currentMatchIndex] ?? 0
     this.ensureVisible()
     this.emitSelect()
     this.markDirty()
@@ -559,7 +561,6 @@ class JsonViewerNodeImpl extends LeafNode implements JsonViewerNode {
   }
 
   clearSearch(): this {
-    this._searchQuery = ''
     this._matches = []
     this._currentMatchIndex = -1
     this.markDirty()
@@ -568,10 +569,10 @@ class JsonViewerNodeImpl extends LeafNode implements JsonViewerNode {
 
   // Copy
   copyValue(): string {
-    if (this._selectedIndex < 0 || this._selectedIndex >= this._flatNodes.length) {
+    const node = this._flatNodes[this._selectedIndex]
+    if (this._selectedIndex < 0 || this._selectedIndex >= this._flatNodes.length || !node) {
       return ''
     }
-    const node = this._flatNodes[this._selectedIndex]
     return JSON.stringify(node.value, null, 2)
   }
 
@@ -671,7 +672,7 @@ class JsonViewerNodeImpl extends LeafNode implements JsonViewerNode {
 
   // Mouse handling
   /** @internal */
-  handleMouse(x: number, y: number, action: string): boolean {
+  handleMouse(_x: number, y: number, action: string): boolean {
     if (!this._visible) return false
 
     const bounds = this._bounds
@@ -739,6 +740,7 @@ class JsonViewerNodeImpl extends LeafNode implements JsonViewerNode {
       if (nodeIndex >= this._flatNodes.length) continue
 
       const node = this._flatNodes[nodeIndex]
+      if (!node) continue
       const isSelected = this._isFocused && nodeIndex === this._selectedIndex
       const isMatch = this._matches.includes(nodeIndex)
 
@@ -801,6 +803,7 @@ class JsonViewerNodeImpl extends LeafNode implements JsonViewerNode {
 
     for (let i = 0; i < chars.length && col < x + width - 1; i++) {
       const char = chars[i]
+      if (!char) continue
       let charFg = fg
       let charAttrs = lineAttrs
 

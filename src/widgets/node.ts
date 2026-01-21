@@ -63,8 +63,40 @@ export abstract class BaseNode implements Node {
   /** @internal */
   _layoutDirty: boolean = true
 
+  /** @internal */
+  _disposed: boolean = false
+
   constructor() {
     this.id = generateId()
+  }
+
+  /**
+   * Check if node has been disposed.
+   */
+  get isDisposed(): boolean {
+    return this._disposed
+  }
+
+  /**
+   * Dispose of the node and release all resources.
+   * Subclasses should override this to clean up timers, handlers, etc.
+   * Always call super.dispose() when overriding.
+   */
+  dispose(): void {
+    if (this._disposed) return
+    this._disposed = true
+
+    // Dispose all children first
+    for (const child of this._children) {
+      child.dispose()
+    }
+
+    // Remove from parent
+    if (this._parent instanceof ContainerNode) {
+      this._parent.remove(this)
+    }
+    this._parent = null
+    this._children = []
   }
 
   get parent(): Node | null {
@@ -144,6 +176,10 @@ export abstract class ContainerNode extends BaseNode {
    */
   add(child: Node): this {
     if (child instanceof BaseNode) {
+      if (child._disposed) {
+        console.warn('Attempting to add a disposed node')
+        return this
+      }
       // Remove from previous parent
       if (child._parent && child._parent instanceof ContainerNode) {
         child._parent.remove(child)
@@ -158,13 +194,17 @@ export abstract class ContainerNode extends BaseNode {
   /**
    * Remove a child node.
    * @param child - Child to remove
+   * @param dispose - Whether to dispose the child (default: false)
    */
-  remove(child: Node): this {
+  remove(child: Node, dispose: boolean = false): this {
     if (child instanceof BaseNode) {
       const index = this._children.indexOf(child)
       if (index !== -1) {
         child._parent = null
         this._children.splice(index, 1)
+        if (dispose) {
+          child.dispose()
+        }
         this.markDirty()
       }
     }
@@ -173,14 +213,27 @@ export abstract class ContainerNode extends BaseNode {
 
   /**
    * Remove all children.
+   * @param dispose - Whether to dispose all children (default: false)
    */
-  clear(): this {
+  clear(dispose: boolean = false): this {
     for (const child of this._children) {
       child._parent = null
+      if (dispose) {
+        child.dispose()
+      }
     }
     this._children = []
     this.markDirty()
     return this
+  }
+
+  /**
+   * Dispose of container and all children.
+   */
+  override dispose(): void {
+    if (this._disposed) return
+    // Children will be disposed by super.dispose()
+    super.dispose()
   }
 
   /**

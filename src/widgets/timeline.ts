@@ -163,9 +163,11 @@ class TimelineNodeImpl extends LeafNode implements TimelineNode {
 
   get selectedItem(): TimelineItem | null {
     const items = this.getOrderedItems()
-    return this._selectedIndex >= 0 && this._selectedIndex < items.length
-      ? items[this._selectedIndex]
-      : null
+    if (this._selectedIndex >= 0 && this._selectedIndex < items.length) {
+      const item = items[this._selectedIndex]
+      return item ?? null
+    }
+    return null
   }
 
   get selectedIndex(): number {
@@ -443,7 +445,8 @@ class TimelineNodeImpl extends LeafNode implements TimelineNode {
         const relY = y - bounds.y + this._scrollOffset * itemHeight
         const index = Math.floor(relY / itemHeight)
 
-        if (index >= 0 && index < items.length) {
+        const clickedItem = items[index]
+        if (index >= 0 && index < items.length && clickedItem) {
           this._isFocused = true
           if (this._selectable) {
             this._selectedIndex = index
@@ -451,7 +454,7 @@ class TimelineNodeImpl extends LeafNode implements TimelineNode {
           }
 
           for (const handler of this._onClickHandlers) {
-            handler(items[index], index)
+            handler(clickedItem, index)
           }
 
           this.markDirty()
@@ -463,7 +466,8 @@ class TimelineNodeImpl extends LeafNode implements TimelineNode {
         const relX = x - bounds.x + this._scrollOffset * itemWidth
         const index = Math.floor(relX / itemWidth)
 
-        if (index >= 0 && index < items.length) {
+        const clickedItem = items[index]
+        if (index >= 0 && index < items.length && clickedItem) {
           this._isFocused = true
           if (this._selectable) {
             this._selectedIndex = index
@@ -471,7 +475,7 @@ class TimelineNodeImpl extends LeafNode implements TimelineNode {
           }
 
           for (const handler of this._onClickHandlers) {
-            handler(items[index], index)
+            handler(clickedItem, index)
           }
 
           this.markDirty()
@@ -522,6 +526,8 @@ class TimelineNodeImpl extends LeafNode implements TimelineNode {
 
     for (let i = startIndex; i < endIndex; i++) {
       const item = items[i]
+      if (!item) continue
+
       const rowY = bounds.y + (i - startIndex) * itemHeight
       const isSelected = this._selectable && this._selectedIndex === i
 
@@ -616,6 +622,8 @@ class TimelineNodeImpl extends LeafNode implements TimelineNode {
 
     for (let i = startIndex; i < endIndex; i++) {
       const item = items[i]
+      if (!item) continue
+
       const colX = bounds.x + (i - startIndex) * itemWidth
       const isSelected = this._selectable && this._selectedIndex === i
 

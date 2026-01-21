@@ -106,7 +106,7 @@ class StatusbarNodeImpl extends LeafNode implements StatusbarNode {
   private _items: StatusItem[] = []
   private _showSeparator: boolean = true
   private _separator: string = '|'
-  private _style: 'filled' | 'inverse' = 'filled'
+  private _statusbarStyle: 'filled' | 'inverse' = 'filled'
   private _padding: number = 1
 
   private _message: string | null = null
@@ -123,7 +123,7 @@ class StatusbarNodeImpl extends LeafNode implements StatusbarNode {
       if (props.items) this._items = props.items
       if (props.showSeparator !== undefined) this._showSeparator = props.showSeparator
       if (props.separator !== undefined) this._separator = props.separator
-      if (props.style) this._style = props.style
+      if (props.style) this._statusbarStyle = props.style
       if (props.padding !== undefined) this._padding = props.padding
     }
   }
@@ -189,7 +189,7 @@ class StatusbarNodeImpl extends LeafNode implements StatusbarNode {
   }
 
   style(style: 'filled' | 'inverse'): this {
-    this._style = style
+    this._statusbarStyle = style
     this.markDirty()
     return this
   }
@@ -364,7 +364,7 @@ class StatusbarNodeImpl extends LeafNode implements StatusbarNode {
     const fg = parentStyle.fg ?? DEFAULT_FG
     const bg = parentStyle.bg ?? DEFAULT_BG
 
-    const baseAttrs = this._style === 'inverse' ? ATTR_INVERSE : 0
+    const baseAttrs = this._statusbarStyle === 'inverse' ? ATTR_INVERSE : 0
 
     // Fill background
     for (let col = bounds.x; col < bounds.x + bounds.width; col++) {
@@ -396,6 +396,7 @@ class StatusbarNodeImpl extends LeafNode implements StatusbarNode {
     let leftX = bounds.x + this._padding
     for (let i = 0; i < leftItems.length; i++) {
       const item = leftItems[i]
+      if (!item) continue
       const itemWidth = this.getItemWidth(item)
 
       if (leftX + itemWidth > bounds.x + bounds.width - this._padding) break // No more space
@@ -415,6 +416,7 @@ class StatusbarNodeImpl extends LeafNode implements StatusbarNode {
     let rightX = bounds.x + bounds.width - this._padding
     for (let i = rightItems.length - 1; i >= 0; i--) {
       const item = rightItems[i]
+      if (!item) continue
       const itemWidth = this.getItemWidth(item)
 
       rightX -= itemWidth
@@ -444,6 +446,7 @@ class StatusbarNodeImpl extends LeafNode implements StatusbarNode {
       if (centerX > leftX && centerX + totalCenterWidth < rightX) {
         for (let i = 0; i < centerItems.length; i++) {
           const item = centerItems[i]
+          if (!item) continue
           const itemWidth = this.getItemWidth(item)
 
           this.renderItem(buffer, item, centerX, bounds.y, itemWidth, fg, bg, baseAttrs)

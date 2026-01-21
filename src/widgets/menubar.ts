@@ -9,7 +9,7 @@ import { DEFAULT_FG, DEFAULT_BG } from '../utils/color'
 import { stringWidth, truncateToWidth, padToWidth } from '../utils/unicode'
 import { BORDER_CHARS } from '../utils/border'
 import { drawRect } from '../core/buffer'
-import { ATTR_INVERSE, ATTR_DIM, ATTR_BOLD } from '../constants'
+import { ATTR_INVERSE, ATTR_DIM } from '../constants'
 
 // ============================================================
 // Types
@@ -127,7 +127,7 @@ class MenubarNodeImpl extends LeafNode implements MenubarNode {
   private _autoClose: boolean = true
   private _maxVisible: number = 10
   private _separator: string = '  '
-  private _style: 'filled' | 'transparent' = 'filled'
+  private _displayStyle: 'filled' | 'transparent' = 'filled'
 
   private _isFocused: boolean = false
   private _activeMenuIndex: number = -1
@@ -146,7 +146,7 @@ class MenubarNodeImpl extends LeafNode implements MenubarNode {
       if (props.autoClose !== undefined) this._autoClose = props.autoClose
       if (props.maxVisible !== undefined) this._maxVisible = props.maxVisible
       if (props.separator !== undefined) this._separator = props.separator
-      if (props.style) this._style = props.style
+      if (props.style) this._displayStyle = props.style
     }
   }
 
@@ -160,8 +160,9 @@ class MenubarNodeImpl extends LeafNode implements MenubarNode {
   }
 
   get activeMenuId(): string | null {
-    if (this._activeMenuIndex >= 0 && this._menus[this._activeMenuIndex]) {
-      return this._menus[this._activeMenuIndex].id
+    const menu = this._menus[this._activeMenuIndex]
+    if (this._activeMenuIndex >= 0 && menu) {
+      return menu.id
     }
     return null
   }
@@ -227,7 +228,7 @@ class MenubarNodeImpl extends LeafNode implements MenubarNode {
   }
 
   style(style: 'filled' | 'transparent'): this {
-    this._style = style
+    this._displayStyle = style
     this.markDirty()
     return this
   }
@@ -235,7 +236,8 @@ class MenubarNodeImpl extends LeafNode implements MenubarNode {
   // Control
   openMenu(id: string): this {
     const index = this._menus.findIndex((m) => m.id === id)
-    if (index !== -1 && !this._menus[index].disabled) {
+    const menu = this._menus[index]
+    if (index !== -1 && menu && !menu.disabled) {
       const prevIndex = this._activeMenuIndex
       this._activeMenuIndex = index
       this._selectedItemIndex = this.findNextSelectableItem(0, 1)
@@ -291,10 +293,11 @@ class MenubarNodeImpl extends LeafNode implements MenubarNode {
       if (nextIndex === startIndex) return this // All disabled
     }
 
-    if (this._activeMenuIndex >= 0) {
+    const nextMenu = this._menus[nextIndex]
+    if (this._activeMenuIndex >= 0 && nextMenu) {
       // Menu was open, open next one
-      this.openMenu(this._menus[nextIndex].id)
-    } else {
+      this.openMenu(nextMenu.id)
+    } else if (nextMenu) {
       // Just highlight without opening
       this._activeMenuIndex = nextIndex
       this.markDirty()
@@ -319,9 +322,10 @@ class MenubarNodeImpl extends LeafNode implements MenubarNode {
       if (prevIndex === startIndex) return this // All disabled
     }
 
-    if (this._activeMenuIndex >= 0) {
-      this.openMenu(this._menus[prevIndex].id)
-    } else {
+    const prevMenu = this._menus[prevIndex]
+    if (this._activeMenuIndex >= 0 && prevMenu) {
+      this.openMenu(prevMenu.id)
+    } else if (prevMenu) {
       this._activeMenuIndex = prevIndex
       this.markDirty()
     }
@@ -451,7 +455,8 @@ class MenubarNodeImpl extends LeafNode implements MenubarNode {
     let index = startIndex
 
     while (index >= 0 && index < this._menus.length) {
-      if (!this._menus[index].disabled) {
+      const menu = this._menus[index]
+      if (menu && !menu.disabled) {
         return index
       }
       index += direction
@@ -506,9 +511,10 @@ class MenubarNodeImpl extends LeafNode implements MenubarNode {
         case 'down':
         case 'space':
           if (this._menus.length > 0) {
-            const firstMenu = this.findNextSelectableMenu(0, 1)
-            if (firstMenu !== -1) {
-              this.openMenu(this._menus[firstMenu].id)
+            const firstMenuIndex = this.findNextSelectableMenu(0, 1)
+            const firstMenu = this._menus[firstMenuIndex]
+            if (firstMenuIndex !== -1 && firstMenu) {
+              this.openMenu(firstMenu.id)
             }
           }
           return true
@@ -525,7 +531,7 @@ class MenubarNodeImpl extends LeafNode implements MenubarNode {
       // Check for hotkey matches when menu is closed
       for (let i = 0; i < this._menus.length; i++) {
         const menu = this._menus[i]
-        if (menu.hotkey && key.toLowerCase() === menu.hotkey.toLowerCase() && !menu.disabled) {
+        if (menu && menu.hotkey && key.toLowerCase() === menu.hotkey.toLowerCase() && !menu.disabled) {
           this.openMenu(menu.id)
           return true
         }
@@ -580,7 +586,7 @@ class MenubarNodeImpl extends LeafNode implements MenubarNode {
     // Check for hotkey matches
     for (let i = 0; i < this._menus.length; i++) {
       const menu = this._menus[i]
-      if (menu.hotkey && key.toLowerCase() === menu.hotkey.toLowerCase() && !menu.disabled) {
+      if (menu && menu.hotkey && key.toLowerCase() === menu.hotkey.toLowerCase() && !menu.disabled) {
         this.openMenu(menu.id)
         return true
       }
@@ -603,17 +609,18 @@ class MenubarNodeImpl extends LeafNode implements MenubarNode {
     if (y === bounds.y) {
       for (let i = 0; i < this._menus.length; i++) {
         const pos = positions[i]
-        if (x >= bounds.x + pos.x && x < bounds.x + pos.x + pos.width) {
+        const menu = this._menus[i]
+        if (pos && menu && x >= bounds.x + pos.x && x < bounds.x + pos.x + pos.width) {
           if (action === 'press') {
-            if (!this._menus[i].disabled) {
+            if (!menu.disabled) {
               this._isFocused = true
-              this.toggleMenu(this._menus[i].id)
+              this.toggleMenu(menu.id)
             }
             return true
           }
           if (action === 'move' && this.isMenuOpen) {
-            if (!this._menus[i].disabled) {
-              this.openMenu(this._menus[i].id)
+            if (menu && !menu.disabled) {
+              this.openMenu(menu.id)
             }
             return true
           }
@@ -625,6 +632,7 @@ class MenubarNodeImpl extends LeafNode implements MenubarNode {
     if (this._activeMenuIndex >= 0) {
       const menu = this._menus[this._activeMenuIndex]
       const menuPos = positions[this._activeMenuIndex]
+      if (!menu || !menuPos) return false
       const dropdownWidth = this.calculateDropdownWidth(menu)
       const visibleItems = Math.min(menu.items.length, this._maxVisible)
       const dropdownHeight = visibleItems + (this._border !== 'none' ? 2 : 0)
@@ -678,7 +686,7 @@ class MenubarNodeImpl extends LeafNode implements MenubarNode {
     const bg = parentStyle.bg ?? DEFAULT_BG
 
     // Draw menubar background
-    if (this._style === 'filled') {
+    if (this._displayStyle === 'filled') {
       for (let col = bounds.x; col < bounds.x + bounds.width; col++) {
         buffer.set(col, bounds.y, { char: ' ', fg, bg, attrs: 0 })
       }
@@ -689,6 +697,7 @@ class MenubarNodeImpl extends LeafNode implements MenubarNode {
     for (let i = 0; i < this._menus.length; i++) {
       const menu = this._menus[i]
       const pos = positions[i]
+      if (!menu || !pos) continue
 
       const isActive = i === this._activeMenuIndex
       const isDisabled = menu.disabled
@@ -717,7 +726,9 @@ class MenubarNodeImpl extends LeafNode implements MenubarNode {
     if (this._activeMenuIndex >= 0) {
       const menu = this._menus[this._activeMenuIndex]
       const menuPos = positions[this._activeMenuIndex]
-      this.renderDropdown(buffer, fg, bg, menu, bounds.x + menuPos.x, bounds.y + 1)
+      if (menu && menuPos) {
+        this.renderDropdown(buffer, fg, bg, menu, bounds.x + menuPos.x, bounds.y + 1)
+      }
     }
   }
 

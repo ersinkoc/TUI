@@ -7,7 +7,7 @@
  */
 
 import type { Node, Buffer, CellStyle, Dimension } from '../types'
-import { ContainerNode, BaseNode } from './node'
+import { ContainerNode } from './node'
 import { DEFAULT_FG, DEFAULT_BG } from '../utils/color'
 import { BORDER_CHARS } from '../utils/border'
 import { drawRect } from '../core/buffer'
@@ -773,11 +773,11 @@ export function helpItems(
   items: Record<string, string>,
   category?: string
 ): HelpItem[] {
-  return Object.entries(items).map(([key, description]) => ({
-    key,
-    description,
-    category
-  }))
+  return Object.entries(items).map(([key, description]) => {
+    const item: HelpItem = { key, description }
+    if (category !== undefined) item.category = category
+    return item
+  })
 }
 
 /**

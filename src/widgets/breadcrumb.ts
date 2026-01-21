@@ -100,6 +100,9 @@ class BreadcrumbNodeImpl extends LeafNode implements BreadcrumbNode {
   private _collapseStyle: 'ellipsis' | 'dropdown' = 'ellipsis'
   private _highlightCurrent: boolean = true
 
+  /** Get collapse style setting */
+  get collapseStyleSetting(): 'ellipsis' | 'dropdown' { return this._collapseStyle }
+
   private _isFocused: boolean = false
   private _focusedIndex: number = -1
 
@@ -129,7 +132,7 @@ class BreadcrumbNodeImpl extends LeafNode implements BreadcrumbNode {
   }
 
   get currentItem(): BreadcrumbItem | null {
-    return this._items.length > 0 ? this._items[this._items.length - 1] : null
+    return this._items.length > 0 ? (this._items[this._items.length - 1] ?? null) : null
   }
 
   get focusedIndex(): number {
@@ -362,6 +365,7 @@ class BreadcrumbNodeImpl extends LeafNode implements BreadcrumbNode {
     // Visible items
     for (let i = 0; i < visibleItems.length; i++) {
       const item = visibleItems[i]
+      if (!item) continue
       let itemWidth = stringWidth(item.label)
       if (item.icon) itemWidth += stringWidth(item.icon) + 1
 
@@ -387,7 +391,8 @@ class BreadcrumbNodeImpl extends LeafNode implements BreadcrumbNode {
     // Keep first and last (maxItems - 1) items
     const visibleItems: BreadcrumbItem[] = []
     if (this._showHome && this._items.length > 0) {
-      visibleItems.push(this._items[0])
+      const firstItem = this._items[0]
+      if (firstItem) visibleItems.push(firstItem)
     }
 
     // Add last items
@@ -440,6 +445,7 @@ class BreadcrumbNodeImpl extends LeafNode implements BreadcrumbNode {
 
     for (let i = startIndex; i < visibleItems.length; i++) {
       const item = visibleItems[i]
+      if (!item) continue
       const actualIndex = this._items.indexOf(item)
       const isLast = actualIndex === this._items.length - 1
       const isFocused = this._isFocused && this._focusedIndex === actualIndex

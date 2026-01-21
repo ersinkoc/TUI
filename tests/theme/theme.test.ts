@@ -268,9 +268,9 @@ describe('Theme System', () => {
 
     it('resolves hex string', () => {
       const color = manager.resolveColor('#ff0000')
-      // parseColor returns RGBA packed as 0xRRGGBBAA (signed 32-bit)
-      // 0xff0000ff in signed 32-bit = -16776961
-      expect(color).toBe(-16776961)
+      // parseColor returns RGBA packed as 0xRRGGBBAA (unsigned 32-bit)
+      // 0xff0000ff >>> 0 = 4278190335
+      expect(color).toBe(0xff0000ff >>> 0)
     })
 
     it('resolves RGB array', () => {

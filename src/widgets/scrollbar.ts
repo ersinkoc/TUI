@@ -116,6 +116,8 @@ class ScrollbarNodeImpl extends LeafNode implements ScrollbarNode {
     if (maxPos === 0) return 0
     const trackLength = this.getTrackLength()
     const availableSpace = trackLength - this.thumbSize
+    // Guard against division by zero when thumb fills entire track
+    if (availableSpace <= 0) return 0
     return Math.floor((this._scrollPosition / maxPos) * availableSpace)
   }
 

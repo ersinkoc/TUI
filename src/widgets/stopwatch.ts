@@ -5,10 +5,10 @@
  */
 
 import { LeafNode } from './node'
-import type { Node, Buffer, CellStyle } from '../types'
+import type { Buffer, CellStyle } from '../types'
 import { DEFAULT_FG, DEFAULT_BG } from '../utils/color'
-import { ATTR_BOLD, ATTR_DIM, ATTR_INVERSE } from '../constants'
-import { truncateToWidth, padToWidth, stringWidth } from '../utils/unicode'
+import { ATTR_BOLD, ATTR_DIM } from '../constants'
+import { truncateToWidth, stringWidth } from '../utils/unicode'
 
 export type StopwatchMode = 'stopwatch' | 'timer'
 
@@ -396,7 +396,7 @@ class StopwatchNodeImpl extends LeafNode implements StopwatchNode {
 
   // Mouse handling
   /** @internal */
-  handleMouse(x: number, y: number, action: string): boolean {
+  handleMouse(_x: number, _y: number, action: string): boolean {
     if (!this._visible) return false
 
     const bounds = this._bounds
@@ -461,6 +461,7 @@ class StopwatchNodeImpl extends LeafNode implements StopwatchNode {
       for (let i = 0; i < lapsToShow; i++) {
         const lapIdx = this._laps.length - 1 - i
         const lap = this._laps[lapIdx]
+        if (!lap) continue
         const y = lapStartY + i
 
         if (y >= bounds.y + bounds.height) break
@@ -471,7 +472,7 @@ class StopwatchNodeImpl extends LeafNode implements StopwatchNode {
     }
   }
 
-  private renderNormalTime(buffer: Buffer, x: number, y: number, width: number, time: string, fg: number, bg: number): void {
+  private renderNormalTime(buffer: Buffer, x: number, y: number, _width: number, time: string, fg: number, bg: number): void {
     const attrs = this._isFocused ? ATTR_BOLD : 0
     const color = this._isRunning ? 46 : fg
     buffer.write(x, y, time, { fg: color, bg, attrs })
@@ -483,9 +484,10 @@ class StopwatchNodeImpl extends LeafNode implements StopwatchNode {
 
     for (const char of time) {
       const pattern = LARGE_DIGITS[char] || LARGE_DIGITS['0']
+      if (!pattern) continue
 
       for (let row = 0; row < pattern.length; row++) {
-        const line = pattern[row]
+        const line = pattern[row] ?? ''
         buffer.write(currentX, y + row, line, { fg: color, bg, attrs: this._isFocused ? ATTR_BOLD : 0 })
       }
 

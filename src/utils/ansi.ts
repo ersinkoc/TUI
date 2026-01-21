@@ -463,3 +463,98 @@ export function enableBracketedPaste(): string {
 export function disableBracketedPaste(): string {
   return `${CSI}?2004l`
 }
+
+// ============================================================
+// ANSI Sanitization
+// ============================================================
+
+/**
+ * Regex patterns for dangerous ANSI sequences.
+ * These can be used for terminal injection attacks.
+ */
+const DANGEROUS_ANSI_PATTERNS = [
+  // Operating System Commands (OSC) - can change terminal title, set clipboard, etc.
+  /\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g,
+  // Device Control Strings (DCS) - can download fonts, send data to devices
+  /\x1bP[^\x1b]*\x1b\\/g,
+  // Application Program Commands (APC) - application-specific commands
+  /\x1b_[^\x1b]*\x1b\\/g,
+  // Start of String (SOS) - string termination
+  /\x1bX[^\x1b]*\x1b\\/g,
+  // Privacy Message (PM) - privacy-related commands
+  /\x1b\^[^\x1b]*\x1b\\/g,
+  // Single Character Introducer (SCI) - legacy terminal commands
+  /\x1bZ/g,
+  // Reset to Initial State (RIS) - can reset terminal completely
+  /\x1bc/g,
+  // Clear screen and move to home (could be used to hide previous output)
+  /\x1b\[2J\x1b\[H/g,
+  // Window manipulation sequences
+  /\x1b\[\d*;\d*;\d*t/g
+]
+
+/**
+ * Safe ANSI patterns that are allowed (colors, cursor movement, attributes).
+ */
+export const SAFE_ANSI_PATTERN = /\x1b\[[\d;]*[mABCDHJKsu]/g
+
+/**
+ * Sanitize a string by removing dangerous ANSI sequences.
+ * Keeps safe sequences like colors and cursor movement.
+ *
+ * @param str - Input string that may contain ANSI sequences
+ * @returns Sanitized string with dangerous sequences removed
+ *
+ * @example
+ * ```typescript
+ * // Dangerous title change - removed
+ * sanitizeAnsi('\x1b]2;Hacked\x07hello')  // 'hello'
+ *
+ * // Safe color code - kept
+ * sanitizeAnsi('\x1b[31mred\x1b[0m')  // '\x1b[31mred\x1b[0m'
+ * ```
+ */
+export function sanitizeAnsi(str: string): string {
+  let result = str
+
+  // Remove all dangerous patterns
+  for (const pattern of DANGEROUS_ANSI_PATTERNS) {
+    result = result.replace(pattern, '')
+  }
+
+  return result
+}
+
+/**
+ * Strip all ANSI sequences from a string.
+ * Useful for getting plain text content.
+ *
+ * @param str - Input string with ANSI sequences
+ * @returns Plain text without any ANSI sequences
+ *
+ * @example
+ * ```typescript
+ * stripAllAnsi('\x1b[31mred\x1b[0m text')  // 'red text'
+ * ```
+ */
+export function stripAllAnsi(str: string): string {
+  // Match all ANSI escape sequences
+  return str.replace(/\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[P\]X^_][^\x1b]*\x1b\\)/g, '')
+}
+
+/**
+ * Check if a string contains potentially dangerous ANSI sequences.
+ *
+ * @param str - Input string to check
+ * @returns True if dangerous sequences found
+ */
+export function hasDangerousAnsi(str: string): boolean {
+  for (const pattern of DANGEROUS_ANSI_PATTERNS) {
+    // Reset pattern lastIndex since we reuse the regex
+    pattern.lastIndex = 0
+    if (pattern.test(str)) {
+      return true
+    }
+  }
+  return false
+}

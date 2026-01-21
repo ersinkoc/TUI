@@ -6,7 +6,7 @@
 import type { Node, Buffer, CellStyle } from '../types'
 import { LeafNode } from './node'
 import { DEFAULT_FG, DEFAULT_BG } from '../utils/color'
-import { stringWidth, truncateToWidth, padToWidth } from '../utils/unicode'
+import { stringWidth, truncateToWidth } from '../utils/unicode'
 import { ATTR_DIM, ATTR_BOLD, ATTR_INVERSE } from '../constants'
 
 // ============================================================
@@ -184,6 +184,23 @@ class DiffViewerNodeImpl extends LeafNode implements DiffViewerNode {
     return this._flatLines.filter((l) => l.type === 'deletion').length
   }
 
+  /** Get current configuration (for debugging/testing) */
+  get config(): {
+    contextLines: number
+    highlightInline: boolean
+    wordWrap: boolean
+    oldLabel: string
+    newLabel: string
+  } {
+    return {
+      contextLines: this._contextLines,
+      highlightInline: this._highlightInline,
+      wordWrap: this._wordWrap,
+      oldLabel: this._oldLabel,
+      newLabel: this._newLabel
+    }
+  }
+
   // Parse unified diff format
   private parseDiff(content: string): void {
     const lines = content.split('\n')
@@ -199,8 +216,8 @@ class DiffViewerNodeImpl extends LeafNode implements DiffViewerNode {
         if (currentHunk) {
           hunks.push(currentHunk)
         }
-        oldLine = parseInt(hunkMatch[1], 10)
-        newLine = parseInt(hunkMatch[3], 10)
+        oldLine = parseInt(hunkMatch[1] ?? '1', 10)
+        newLine = parseInt(hunkMatch[3] ?? '1', 10)
         currentHunk = {
           oldStart: oldLine,
           oldCount: parseInt(hunkMatch[2] ?? '1', 10),
@@ -385,7 +402,8 @@ class DiffViewerNodeImpl extends LeafNode implements DiffViewerNode {
   private scrollToHunk(index: number): void {
     let lineIndex = 0
     for (let i = 0; i < index; i++) {
-      lineIndex += this._hunks[i].lines.length
+      const hunk = this._hunks[i]
+      if (hunk) lineIndex += hunk.lines.length
     }
     this._scrollOffset = lineIndex
     this._currentLineIndex = lineIndex
@@ -396,7 +414,7 @@ class DiffViewerNodeImpl extends LeafNode implements DiffViewerNode {
     // Find next addition or deletion
     for (let i = this._currentLineIndex + 1; i < this._flatLines.length; i++) {
       const line = this._flatLines[i]
-      if (line.type === 'addition' || line.type === 'deletion') {
+      if (line && (line.type === 'addition' || line.type === 'deletion')) {
         this._currentLineIndex = i
         this.ensureLineVisible(i)
         this.markDirty()
@@ -410,7 +428,7 @@ class DiffViewerNodeImpl extends LeafNode implements DiffViewerNode {
     // Find previous addition or deletion
     for (let i = this._currentLineIndex - 1; i >= 0; i--) {
       const line = this._flatLines[i]
-      if (line.type === 'addition' || line.type === 'deletion') {
+      if (line && (line.type === 'addition' || line.type === 'deletion')) {
         this._currentLineIndex = i
         this.ensureLineVisible(i)
         this.markDirty()
@@ -520,7 +538,7 @@ class DiffViewerNodeImpl extends LeafNode implements DiffViewerNode {
 
   // Mouse handling
   /** @internal */
-  handleMouse(x: number, y: number, action: string): boolean {
+  handleMouse(_x: number, y: number, action: string): boolean {
     if (!this._visible) return false
 
     const bounds = this._bounds
@@ -586,6 +604,8 @@ class DiffViewerNodeImpl extends LeafNode implements DiffViewerNode {
 
     for (let i = this._scrollOffset; i < endIndex; i++) {
       const line = this._flatLines[i]
+      if (!line) continue
+
       const y = bounds.y + (i - this._scrollOffset)
       const isCurrent = this._isFocused && i === this._currentLineIndex
 
@@ -688,8 +708,8 @@ class DiffViewerNodeImpl extends LeafNode implements DiffViewerNode {
     const endIndex = Math.min(this._scrollOffset + visibleLines, oldLines.length)
 
     for (let i = this._scrollOffset; i < endIndex; i++) {
-      const oldLine = oldLines[i]
-      const newLine = newLines[i]
+      const oldLine = oldLines[i] ?? null
+      const newLine = newLines[i] ?? null
       const y = bounds.y + (i - this._scrollOffset)
 
       // Draw old side

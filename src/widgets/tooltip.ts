@@ -75,6 +75,9 @@ class TooltipNodeImpl extends LeafNode implements TooltipNode {
   private _border: 'single' | 'double' | 'rounded' | 'bold' | 'none' = 'rounded'
   private _delay: number = 0
   private _maxWidth: number = 40
+
+  /** Get delay before showing tooltip */
+  get delayMs(): number { return this._delay }
   private _showArrow: boolean = true
 
   private _targetX: number = 0
@@ -305,7 +308,7 @@ class TooltipNodeImpl extends LeafNode implements TooltipNode {
     const textY = y + borderOffset
 
     for (let i = 0; i < lines.length; i++) {
-      const line = lines[i]
+      const line = lines[i] ?? ''
       if (textY + i < screenHeight) {
         buffer.write(textX, textY + i, line, { fg, bg, attrs: 0 })
       }

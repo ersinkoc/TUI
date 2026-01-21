@@ -270,7 +270,8 @@ class CommandPaletteNodeImpl extends LeafNode implements CommandPaletteNode {
         }
 
         // Uppercase letter bonus (camelCase boundary)
-        if (text[i] !== text[i].toLowerCase() && i > 0) {
+        const char = text[i]
+        if (char && char !== char.toLowerCase() && i > 0) {
           score += 10
         }
 
@@ -289,8 +290,9 @@ class CommandPaletteNodeImpl extends LeafNode implements CommandPaletteNode {
   }
 
   // Simple fuzzy matching (for backwards compatibility)
-  private fuzzyMatch(text: string, query: string): boolean {
-    return this.fuzzyScore(text, query) > 0
+  // Exposed for external use
+  get fuzzyMatchFn(): (text: string, query: string) => boolean {
+    return (text, query) => this.fuzzyScore(text, query) > 0
   }
 
   private ensureVisible(): void {

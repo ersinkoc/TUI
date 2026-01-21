@@ -5,9 +5,9 @@
  */
 
 import { LeafNode } from './node'
-import type { Node, Buffer, CellStyle } from '../types'
+import type { Buffer, CellStyle } from '../types'
 import { DEFAULT_FG, DEFAULT_BG } from '../utils/color'
-import { ATTR_BOLD, ATTR_DIM, ATTR_INVERSE, ATTR_UNDERLINE } from '../constants'
+import { ATTR_BOLD, ATTR_DIM, ATTR_INVERSE } from '../constants'
 import { truncateToWidth, padToWidth, stringWidth } from '../utils/unicode'
 
 export interface KanbanCard {
@@ -143,6 +143,10 @@ class KanbanNodeImpl extends LeafNode implements KanbanNode {
     return this._selectedCard
   }
 
+  get scrollY(): number {
+    return this._scrollY
+  }
+
   // Configuration
   addColumn(column: KanbanColumn): this {
     this._columns.push({ ...column, cards: [...column.cards] })
@@ -218,10 +222,12 @@ class KanbanNodeImpl extends LeafNode implements KanbanNode {
       const cardIndex = fromColumn.cards.findIndex(c => c.id === cardId)
       if (cardIndex !== -1) {
         const [card] = fromColumn.cards.splice(cardIndex, 1)
-        const insertPos = position ?? toColumn.cards.length
-        toColumn.cards.splice(insertPos, 0, card)
-        this.emitMove(card, fromColumnId, toColumnId)
-        this.markDirty()
+        if (card) {
+          const insertPos = position ?? toColumn.cards.length
+          toColumn.cards.splice(insertPos, 0, card)
+          this.emitMove(card, fromColumnId, toColumnId)
+          this.markDirty()
+        }
       }
     }
     return this
@@ -345,9 +351,10 @@ class KanbanNodeImpl extends LeafNode implements KanbanNode {
     if (this._selectedCard >= 0 && this._selectedColumn > 0) {
       const fromColumn = this._columns[this._selectedColumn]
       const toColumn = this._columns[this._selectedColumn - 1]
-      const card = fromColumn.cards[this._selectedCard]
+      if (!fromColumn || !toColumn) return this
 
-      if (card && toColumn) {
+      const card = fromColumn.cards[this._selectedCard]
+      if (card) {
         this.moveCard(fromColumn.id, card.id, toColumn.id)
         this._selectedColumn--
         this._selectedCard = toColumn.cards.length - 1
@@ -361,9 +368,10 @@ class KanbanNodeImpl extends LeafNode implements KanbanNode {
     if (this._selectedCard >= 0 && this._selectedColumn < this._columns.length - 1) {
       const fromColumn = this._columns[this._selectedColumn]
       const toColumn = this._columns[this._selectedColumn + 1]
-      const card = fromColumn.cards[this._selectedCard]
+      if (!fromColumn || !toColumn) return this
 
-      if (card && toColumn) {
+      const card = fromColumn.cards[this._selectedCard]
+      if (card) {
         this.moveCard(fromColumn.id, card.id, toColumn.id)
         this._selectedColumn++
         this._selectedCard = toColumn.cards.length - 1
@@ -376,11 +384,14 @@ class KanbanNodeImpl extends LeafNode implements KanbanNode {
   moveCardUp(): this {
     const column = this._columns[this._selectedColumn]
     if (column && this._selectedCard > 0) {
-      const temp = column.cards[this._selectedCard]
-      column.cards[this._selectedCard] = column.cards[this._selectedCard - 1]
-      column.cards[this._selectedCard - 1] = temp
-      this._selectedCard--
-      this.markDirty()
+      const currentCard = column.cards[this._selectedCard]
+      const prevCard = column.cards[this._selectedCard - 1]
+      if (currentCard && prevCard) {
+        column.cards[this._selectedCard] = prevCard
+        column.cards[this._selectedCard - 1] = currentCard
+        this._selectedCard--
+        this.markDirty()
+      }
     }
     return this
   }
@@ -388,11 +399,14 @@ class KanbanNodeImpl extends LeafNode implements KanbanNode {
   moveCardDown(): this {
     const column = this._columns[this._selectedColumn]
     if (column && this._selectedCard >= 0 && this._selectedCard < column.cards.length - 1) {
-      const temp = column.cards[this._selectedCard]
-      column.cards[this._selectedCard] = column.cards[this._selectedCard + 1]
-      column.cards[this._selectedCard + 1] = temp
-      this._selectedCard++
-      this.markDirty()
+      const currentCard = column.cards[this._selectedCard]
+      const nextCard = column.cards[this._selectedCard + 1]
+      if (currentCard && nextCard) {
+        column.cards[this._selectedCard] = nextCard
+        column.cards[this._selectedCard + 1] = currentCard
+        this._selectedCard++
+        this.markDirty()
+      }
     }
     return this
   }
@@ -437,7 +451,7 @@ class KanbanNodeImpl extends LeafNode implements KanbanNode {
   private emitSelect(): void {
     const column = this._columns[this._selectedColumn]
     if (column) {
-      const card = this._selectedCard >= 0 ? column.cards[this._selectedCard] : null
+      const card = this._selectedCard >= 0 ? (column.cards[this._selectedCard] ?? null) : null
       for (const handler of this._onSelectHandlers) {
         handler(column, card)
       }
@@ -545,13 +559,15 @@ class KanbanNodeImpl extends LeafNode implements KanbanNode {
         } else if (relY > 0) {
           // Card area
           const column = this._columns[colIndex]
-          const cardY = relY - 1 // Skip header
-          const cardIndex = Math.floor(cardY / this._cardHeight)
+          if (column) {
+            const cardY = relY - 1 // Skip header
+            const cardIndex = Math.floor(cardY / this._cardHeight)
 
-          if (cardIndex >= 0 && cardIndex < column.cards.length) {
-            this._selectedCard = cardIndex
-          } else {
-            this._selectedCard = -1
+            if (cardIndex >= 0 && cardIndex < column.cards.length) {
+              this._selectedCard = cardIndex
+            } else {
+              this._selectedCard = -1
+            }
           }
         }
 
@@ -593,6 +609,8 @@ class KanbanNodeImpl extends LeafNode implements KanbanNode {
 
     for (let colIdx = 0; colIdx < this._columns.length; colIdx++) {
       const column = this._columns[colIdx]
+      if (!column) continue
+
       const isSelectedColumn = this._isFocused && colIdx === this._selectedColumn
 
       // Skip if column doesn't fit
@@ -630,7 +648,7 @@ class KanbanNodeImpl extends LeafNode implements KanbanNode {
     width: number,
     height: number,
     column: KanbanColumn,
-    colIndex: number,
+    _colIndex: number,
     isSelected: boolean,
     fg: number,
     bg: number
@@ -663,9 +681,10 @@ class KanbanNodeImpl extends LeafNode implements KanbanNode {
 
     for (let cardIdx = 0; cardIdx < column.cards.length && currentY + this._cardHeight <= y + height; cardIdx++) {
       const card = column.cards[cardIdx]
-      const isCardSelected = isSelected && cardIdx === this._selectedCard
+      if (!card) continue
 
-      this.renderCard(buffer, x, currentY, width, this._cardHeight, card, isCardSelected, fg, bg)
+      const isCardSelected = isSelected && cardIdx === this._selectedCard
+      this.renderCard(buffer, x, currentY, width, this._cardHeight, card, isCardSelected, fg)
       currentY += this._cardHeight
     }
 
@@ -685,8 +704,7 @@ class KanbanNodeImpl extends LeafNode implements KanbanNode {
     height: number,
     card: KanbanCard,
     isSelected: boolean,
-    fg: number,
-    bg: number
+    fg: number
   ): void {
     const cardBg = isSelected ? 237 : 235
     const cardFg = isSelected ? 255 : fg
@@ -749,6 +767,8 @@ class KanbanNodeImpl extends LeafNode implements KanbanNode {
       for (let i = 0; i < card.labels.length && labelX < innerX + innerWidth - 2; i++) {
         const label = card.labels[i]
         const labelColor = LABEL_COLORS[i % LABEL_COLORS.length]
+        if (!label || labelColor === undefined) continue
+
         const truncLabel = truncateToWidth(label, Math.min(8, innerWidth - (labelX - innerX) - 1))
 
         if (stringWidth(truncLabel) > 0) {

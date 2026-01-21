@@ -133,7 +133,7 @@ class ColorPickerNodeImpl extends LeafNode implements ColorPickerNode {
   // Convert color index to RGB
   private colorToRgb(color: number): RgbColor {
     if (color < 16) {
-      return BASIC_16_COLORS[color]
+      return BASIC_16_COLORS[color] ?? { r: 0, g: 0, b: 0 }
     }
 
     if (color >= 232) {
@@ -538,7 +538,7 @@ class ColorPickerNodeImpl extends LeafNode implements ColorPickerNode {
     buffer.write(x, y + 1, rgbStr, { fg, bg, attrs: 0 })
   }
 
-  private renderPalette(buffer: Buffer, x: number, y: number, width: number, height: number, fg: number, bg: number): void {
+  private renderPalette(buffer: Buffer, x: number, y: number, width: number, height: number, _fg: number, _bg: number): void {
     switch (this._mode) {
       case 'basic16':
         this.renderBasic16(buffer, x, y, width, height)
