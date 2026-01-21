@@ -22,7 +22,8 @@ export function getBorderChars(style: BorderStyle): BorderChars | undefined {
   if (style === 'none') {
     return undefined
   }
-  return BORDER_CHARS[style]
+  const chars = BORDER_CHARS[style]
+  return chars ?? undefined
 }
 
 /**
@@ -49,11 +50,22 @@ export function drawBorder(options: {
 }): string[] {
   const { width, height, style, title } = options
 
-  if (style === 'none' || width < 2 || height < 2) {
+  // Validate inputs
+  if (
+    !Number.isFinite(width) ||
+    !Number.isFinite(height) ||
+    width < 2 ||
+    height < 2 ||
+    style === 'none'
+  ) {
     return []
   }
 
   const chars = BORDER_CHARS[style]
+  if (!chars) {
+    return []
+  }
+
   const lines: string[] = []
 
   // Top border
@@ -102,6 +114,22 @@ export function isOnBorder(
     return false
   }
 
+  // Validate inputs
+  if (
+    !Number.isFinite(x) ||
+    !Number.isFinite(y) ||
+    !Number.isFinite(width) ||
+    !Number.isFinite(height) ||
+    width < 1 ||
+    height < 1 ||
+    x < 0 ||
+    y < 0 ||
+    x >= width ||
+    y >= height
+  ) {
+    return false
+  }
+
   return x === 0 || x === width - 1 || y === 0 || y === height - 1
 }
 
@@ -127,6 +155,25 @@ export function getBorderCharAt(
   }
 
   const chars = BORDER_CHARS[style]
+  if (!chars) {
+    return undefined
+  }
+
+  // Validate inputs
+  if (
+    !Number.isFinite(x) ||
+    !Number.isFinite(y) ||
+    !Number.isFinite(width) ||
+    !Number.isFinite(height) ||
+    width < 1 ||
+    height < 1 ||
+    x < 0 ||
+    y < 0 ||
+    x >= width ||
+    y >= height
+  ) {
+    return undefined
+  }
 
   // Corners
   if (x === 0 && y === 0) return chars.topLeft

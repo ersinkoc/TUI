@@ -367,51 +367,65 @@ export function routerPlugin(options: RouterPluginOptions = {}): Plugin {
   }
 
   /**
-   * Run navigation guards.
+   * Run navigation guards with error handling.
    */
   async function runGuards(to: Route, from: Route | null): Promise<string | false | undefined> {
     // Run global guards
     for (const guard of beforeGuards) {
-      let result: string | false | undefined
-      let resolved = false
+      try {
+        let result: string | false | undefined
+        let resolved = false
 
-      await guard(to, from, (path) => {
-        resolved = true
-        result = path
-      })
+        await guard(to, from, (path) => {
+          resolved = true
+          result = path
+        })
 
-      // If guard called next(false), abort
-      if (result === false) {
-        return false
-      }
+        // If guard called next(false), abort
+        if (result === false) {
+          return false
+        }
 
-      // If guard redirected, return new path
-      if (typeof result === 'string') {
-        return result
-      }
+        // If guard redirected, return new path
+        if (typeof result === 'string') {
+          return result
+        }
 
-      // If guard didn't resolve, abort
-      if (!resolved) {
+        // If guard didn't resolve, abort
+        if (!resolved) {
+          return false
+        }
+      } catch (err) {
+        if (debug) {
+          console.error('[router] Guard error:', err)
+        }
         return false
       }
     }
 
     // Run route-specific guard
     if (to.matched?.beforeEnter) {
-      let result: string | false | undefined
-      let resolved = false
+      try {
+        let result: string | false | undefined
+        let resolved = false
 
-      await to.matched.beforeEnter(to, from, (path) => {
-        resolved = true
-        result = path
-      })
+        await to.matched.beforeEnter(to, from, (path) => {
+          resolved = true
+          result = path
+        })
 
-      if (result === false || !resolved) {
+        if (result === false || !resolved) {
+          return false
+        }
+
+        if (typeof result === 'string') {
+          return result
+        }
+      } catch (err) {
+        if (debug) {
+          console.error('[router] Route guard error:', err)
+        }
         return false
-      }
-
-      if (typeof result === 'string') {
-        return result
       }
     }
 
@@ -479,30 +493,7 @@ export function routerPlugin(options: RouterPluginOptions = {}): Plugin {
       return navigateInternal(guardResult, {}, direction, redirectDepth + 1)
     }
 
-    // Update history
-    if (direction === 'forward') {
-      // Remove forward history if we're not at the end
-      if (historyIndex < history.length - 1) {
-        history.splice(historyIndex + 1)
-      }
-      history.push(to)
-      historyIndex = history.length - 1
-
-      // Trim history if needed
-      if (history.length > maxHistorySize) {
-        history.shift()
-        historyIndex = history.length - 1
-      }
-    } else if (direction === 'replace') {
-      if (historyIndex >= 0) {
-        history[historyIndex] = to
-      } else {
-        history.push(to)
-        historyIndex = 0
-      }
-    }
-
-    // Create view with error handling
+    // Create view with error handling BEFORE updating history
     if (to.matched) {
       try {
         currentView = to.matched.component(to.params, to.query)
@@ -524,6 +515,30 @@ export function routerPlugin(options: RouterPluginOptions = {}): Plugin {
         console.error(`[router] No route matched: ${to.path}`)
       }
       currentView = null
+      // Still update history even if no route matched (allows 404 handling)
+    }
+
+    // Update history AFTER component is successfully created
+    if (direction === 'forward') {
+      // Remove forward history if we're not at the end
+      if (historyIndex < history.length - 1) {
+        history.splice(historyIndex + 1)
+      }
+      history.push(to)
+      historyIndex = history.length - 1
+
+      // Trim history if needed
+      if (history.length > maxHistorySize) {
+        history.shift()
+        historyIndex = history.length - 1
+      }
+    } else if (direction === 'replace') {
+      if (historyIndex >= 0) {
+        history[historyIndex] = to
+      } else {
+        history.push(to)
+        historyIndex = 0
+      }
     }
 
     // Run after handlers with error protection

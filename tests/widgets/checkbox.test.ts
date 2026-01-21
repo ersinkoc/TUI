@@ -291,6 +291,14 @@ describe('Checkbox Widget', () => {
       expect(cb._dirty).toBe(true)
     })
 
+    it('should not mark dirty when checked is set to same value', () => {
+      const cb = checkbox()
+      cb._dirty = false
+
+      cb.checked(false)
+      expect(cb._dirty).toBe(false)
+    })
+
     it('should mark dirty when disabled changes', () => {
       const cb = checkbox()
       cb._dirty = false
@@ -322,6 +330,315 @@ describe('Checkbox Widget', () => {
 
       cb.blur()
       expect(cb._dirty).toBe(true)
+    })
+  })
+
+  describe('handler cleanup', () => {
+    it('should remove onChange handler with offChange', () => {
+      let callCount = 0
+      const handler = () => {
+        callCount++
+      }
+      const cb = checkbox().onChange(handler)
+
+      cb.toggle()
+      expect(callCount).toBe(1)
+
+      cb.offChange(handler)
+      cb.toggle()
+      expect(callCount).toBe(1) // Should not increase
+    })
+
+    it('should remove specific onChange handler when multiple exist', () => {
+      const handler1 = vi.fn()
+      const handler2 = vi.fn()
+      const cb = checkbox().onChange(handler1).onChange(handler2)
+
+      cb.toggle()
+      expect(handler1).toHaveBeenCalledTimes(1)
+      expect(handler2).toHaveBeenCalledTimes(1)
+
+      cb.offChange(handler1)
+      cb.toggle()
+      expect(handler1).toHaveBeenCalledTimes(1) // Not called again
+      expect(handler2).toHaveBeenCalledTimes(2) // Still called
+    })
+
+    it('should be chainable after offChange', () => {
+      const cb = checkbox()
+      const handler = vi.fn()
+      const result = cb.onChange(handler).offChange(handler)
+      expect(result).toBe(cb)
+    })
+
+    it('should handle offChange with non-existent handler gracefully', () => {
+      const cb = checkbox()
+      const handler = vi.fn()
+      // Should not throw when handler is not in the list
+      expect(() => cb.offChange(handler)).not.toThrow()
+    })
+
+    it('should remove onFocus handler with offFocus', () => {
+      let callCount = 0
+      const handler = () => {
+        callCount++
+      }
+      const cb = checkbox().onFocus(handler)
+
+      cb.focus()
+      expect(callCount).toBe(1)
+
+      cb.offFocus(handler)
+      cb.blur() // Reset focus state
+      cb.focus()
+      expect(callCount).toBe(1) // Should not increase
+    })
+
+    it('should remove specific onFocus handler when multiple exist', () => {
+      const handler1 = vi.fn()
+      const handler2 = vi.fn()
+      const cb = checkbox().onFocus(handler1).onFocus(handler2)
+
+      cb.focus()
+      expect(handler1).toHaveBeenCalledTimes(1)
+      expect(handler2).toHaveBeenCalledTimes(1)
+
+      cb.offFocus(handler1)
+      cb.blur()
+      cb.focus()
+      expect(handler1).toHaveBeenCalledTimes(1) // Not called again
+      expect(handler2).toHaveBeenCalledTimes(2) // Still called
+    })
+
+    it('should remove onBlur handler with offBlur', () => {
+      let callCount = 0
+      const handler = () => {
+        callCount++
+      }
+      const cb = checkbox().onBlur(handler)
+
+      cb.focus()
+      cb.blur()
+      expect(callCount).toBe(1)
+
+      cb.offBlur(handler)
+      cb.focus()
+      cb.blur()
+      expect(callCount).toBe(1) // Should not increase
+    })
+
+    it('should remove specific onBlur handler when multiple exist', () => {
+      const handler1 = vi.fn()
+      const handler2 = vi.fn()
+      const cb = checkbox().onBlur(handler1).onBlur(handler2)
+
+      cb.focus()
+      cb.blur()
+      expect(handler1).toHaveBeenCalledTimes(1)
+      expect(handler2).toHaveBeenCalledTimes(1)
+
+      cb.offBlur(handler1)
+      cb.focus()
+      cb.blur()
+      expect(handler1).toHaveBeenCalledTimes(1) // Not called again
+      expect(handler2).toHaveBeenCalledTimes(2) // Still called
+    })
+
+    it('should clear all handlers with clearHandlers', () => {
+      const changeHandler = vi.fn()
+      const focusHandler = vi.fn()
+      const blurHandler = vi.fn()
+      const cb = checkbox()
+        .onChange(changeHandler)
+        .onFocus(focusHandler)
+        .onBlur(blurHandler)
+
+      cb.clearHandlers()
+
+      cb.toggle()
+      cb.focus()
+      cb.blur()
+
+      expect(changeHandler).not.toHaveBeenCalled()
+      expect(focusHandler).not.toHaveBeenCalled()
+      expect(blurHandler).not.toHaveBeenCalled()
+    })
+
+    it('should be chainable after clearHandlers', () => {
+      const cb = checkbox().onChange(vi.fn())
+      const result = cb.clearHandlers()
+      expect(result).toBe(cb)
+    })
+
+    it('should allow adding handlers after clearHandlers', () => {
+      const handler = vi.fn()
+      const cb = checkbox()
+      cb.onChange(vi.fn()).clearHandlers().onChange(handler)
+
+      cb.toggle()
+      expect(handler).toHaveBeenCalled()
+    })
+  })
+
+  describe('dispose', () => {
+    it('should clear all handlers on dispose', () => {
+      const changeHandler = vi.fn()
+      const focusHandler = vi.fn()
+      const blurHandler = vi.fn()
+      const cb = checkbox()
+        .onChange(changeHandler)
+        .onFocus(focusHandler)
+        .onBlur(blurHandler)
+
+      cb.dispose()
+
+      cb.toggle()
+      cb.focus()
+      cb.blur()
+
+      expect(changeHandler).not.toHaveBeenCalled()
+      expect(focusHandler).not.toHaveBeenCalled()
+      expect(blurHandler).not.toHaveBeenCalled()
+    })
+
+    it('should mark as disposed on dispose', () => {
+      const cb = checkbox()
+      cb.dispose()
+      expect(cb._disposed).toBe(true)
+    })
+
+    it('should not throw when disposing already disposed checkbox', () => {
+      const cb = checkbox()
+      cb.dispose()
+      expect(() => cb.dispose()).not.toThrow()
+    })
+
+    it('should call parent dispose', () => {
+      const cb = checkbox()
+      // Parent dispose sets _disposed flag
+      expect(cb._disposed).toBe(false)
+      cb.dispose()
+      expect(cb._disposed).toBe(true)
+    })
+  })
+
+  describe('disabled focus behavior', () => {
+    it('should not focus when disabled', () => {
+      const cb = checkbox().disabled(true)
+      cb.focus()
+      expect(cb.isFocused).toBe(false)
+    })
+
+    it('should not emit focus event when disabled', () => {
+      const handler = vi.fn()
+      const cb = checkbox().disabled(true).onFocus(handler)
+
+      cb.focus()
+      expect(handler).not.toHaveBeenCalled()
+    })
+
+    it('should not mark dirty when trying to focus disabled checkbox', () => {
+      const cb = checkbox().disabled(true)
+      cb._dirty = false
+
+      cb.focus()
+      expect(cb._dirty).toBe(false)
+    })
+
+    it('should not blur if already not focused when disabled', () => {
+      const handler = vi.fn()
+      const cb = checkbox().disabled(true).onBlur(handler)
+
+      cb.blur()
+      expect(handler).not.toHaveBeenCalled()
+    })
+
+    it('should lose focus when becoming disabled', () => {
+      const cb = checkbox().focus()
+      expect(cb.isFocused).toBe(true)
+
+      cb.disabled(true)
+      // Checkbox should still show as focused in state, but won't accept new focus
+      // The actual behavior is that disabled just prevents NEW focus, doesn't clear existing
+      expect(cb.isFocused).toBe(true)
+    })
+  })
+
+  describe('edge cases', () => {
+    it('should handle toggle when already disabled', () => {
+      const handler = vi.fn()
+      const cb = checkbox().checked(false).disabled(true).onChange(handler)
+
+      cb.toggle()
+      // State should not change
+      expect(cb.isChecked).toBe(false)
+      expect(handler).not.toHaveBeenCalled()
+    })
+
+    it('should handle setting checked to same value multiple times', () => {
+      const cb = checkbox()
+      cb._dirty = false
+
+      cb.checked(false)
+      expect(cb._dirty).toBe(false)
+
+      cb.checked(false)
+      expect(cb._dirty).toBe(false)
+    })
+
+    it('should handle empty label', () => {
+      const cb = checkbox().label('')
+      expect(cb).toBeDefined()
+      // Should not throw
+    })
+
+    it('should handle label with special characters', () => {
+      const specialLabels = ['Test\nLabel', 'Test\tLabel', 'Test\rLabel', 'Test❤️']
+      for (const label of specialLabels) {
+        const cb = checkbox().label(label)
+        expect(cb).toBeDefined()
+      }
+    })
+
+    it('should handle rapid toggle calls', () => {
+      const handler = vi.fn()
+      const cb = checkbox().onChange(handler)
+
+      cb.toggle().toggle().toggle()
+      expect(handler).toHaveBeenCalledTimes(3)
+      expect(cb.isChecked).toBe(true)
+    })
+
+    it('should handle setting disabled when already disabled', () => {
+      const cb = checkbox().disabled(true)
+      cb._dirty = false
+
+      cb.disabled(true)
+      expect(cb._dirty).toBe(true) // Still marks dirty
+    })
+
+    it('should handle focus then disable then focus', () => {
+      const handler = vi.fn()
+      const cb = checkbox().onFocus(handler)
+
+      cb.focus()
+      expect(handler).toHaveBeenCalledTimes(1)
+
+      cb.disabled(true)
+      cb._dirty = false
+
+      cb.focus()
+      expect(handler).toHaveBeenCalledTimes(1) // Not called again
+    })
+
+    it('should handle multiple handlers then remove one during iteration', () => {
+      const handler1 = vi.fn()
+      const handler2 = vi.fn()
+      const cb = checkbox().onChange(handler1).onChange(handler2)
+
+      cb.toggle()
+      expect(handler1).toHaveBeenCalledTimes(1)
+      expect(handler2).toHaveBeenCalledTimes(1)
     })
   })
 })

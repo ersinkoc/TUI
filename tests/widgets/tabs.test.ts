@@ -544,4 +544,386 @@ describe('Tabs Widget', () => {
       expect(selectedTabCell?.attrs).toBe(33)
     })
   })
+
+  describe('handler cleanup', () => {
+    it('should remove onChange handler with offChange', () => {
+      let callCount = 0
+      const handler = () => {
+        callCount++
+      }
+      const t = tabs().tabs(createTestTabs()).onChange(handler)
+
+      t.selected(1)
+      expect(callCount).toBe(1)
+
+      t.offChange(handler)
+      t.selected(2)
+      expect(callCount).toBe(1) // Should not increase
+    })
+
+    it('should remove specific onChange handler when multiple exist', () => {
+      const handler1 = vi.fn()
+      const handler2 = vi.fn()
+      const t = tabs().tabs(createTestTabs()).onChange(handler1).onChange(handler2)
+
+      t.selected(1)
+      expect(handler1).toHaveBeenCalledTimes(1)
+      expect(handler2).toHaveBeenCalledTimes(1)
+
+      t.offChange(handler1)
+      t.selected(2)
+      expect(handler1).toHaveBeenCalledTimes(1) // Not called again
+      expect(handler2).toHaveBeenCalledTimes(2) // Still called
+    })
+
+    it('should be chainable after offChange', () => {
+      const t = tabs()
+      const handler = vi.fn()
+      const result = t.onChange(handler).offChange(handler)
+      expect(result).toBe(t)
+    })
+
+    it('should handle offChange with non-existent handler gracefully', () => {
+      const t = tabs()
+      const handler = vi.fn()
+      expect(() => t.offChange(handler)).not.toThrow()
+    })
+
+    it('should remove onFocus handler with offFocus', () => {
+      let callCount = 0
+      const handler = () => {
+        callCount++
+      }
+      const t = tabs().onFocus(handler)
+
+      t.focus()
+      expect(callCount).toBe(1)
+
+      t.offFocus(handler)
+      t.blur() // Reset focus
+      t.focus()
+      expect(callCount).toBe(1) // Should not increase
+    })
+
+    it('should remove onBlur handler with offBlur', () => {
+      let callCount = 0
+      const handler = () => {
+        callCount++
+      }
+      const t = tabs().onBlur(handler)
+
+      t.focus()
+      t.blur()
+      expect(callCount).toBe(1)
+
+      t.offBlur(handler)
+      t.focus()
+      t.blur()
+      expect(callCount).toBe(1) // Should not increase
+    })
+
+    it('should clear all handlers with clearHandlers', () => {
+      const changeHandler = vi.fn()
+      const focusHandler = vi.fn()
+      const blurHandler = vi.fn()
+      const t = tabs()
+        .tabs(createTestTabs())
+        .onChange(changeHandler)
+        .onFocus(focusHandler)
+        .onBlur(blurHandler)
+
+      t.clearHandlers()
+
+      t.selected(1)
+      t.focus()
+      t.blur()
+
+      expect(changeHandler).not.toHaveBeenCalled()
+      expect(focusHandler).not.toHaveBeenCalled()
+      expect(blurHandler).not.toHaveBeenCalled()
+    })
+
+    it('should be chainable after clearHandlers', () => {
+      const t = tabs()
+      const result = t.onChange(vi.fn()).clearHandlers()
+      expect(result).toBe(t)
+    })
+
+    it('should allow adding handlers after clearHandlers', () => {
+      const handler = vi.fn()
+      const t = tabs()
+        .tabs(createTestTabs())
+        .onChange(vi.fn())
+        .clearHandlers()
+        .onChange(handler)
+
+      t.selected(1)
+      expect(handler).toHaveBeenCalled()
+    })
+  })
+
+  describe('dispose', () => {
+    it('should clear all handlers on dispose', () => {
+      const changeHandler = vi.fn()
+      const focusHandler = vi.fn()
+      const blurHandler = vi.fn()
+      const t = tabs()
+        .tabs(createTestTabs())
+        .onChange(changeHandler)
+        .onFocus(focusHandler)
+        .onBlur(blurHandler)
+
+      t.dispose()
+
+      t.selected(1)
+      t.focus()
+      t.blur()
+
+      expect(changeHandler).not.toHaveBeenCalled()
+      expect(focusHandler).not.toHaveBeenCalled()
+      expect(blurHandler).not.toHaveBeenCalled()
+    })
+
+    it('should clear tabs on dispose', () => {
+      const t = tabs().tabs(createTestTabs())
+      t.dispose()
+      expect(t.tabCount).toBe(0)
+    })
+
+    it('should clear tab content parent references on dispose', () => {
+      const content = text('Test')
+      const t = tabs().tabs([{ label: 'Tab', content }])
+      // Content parent should be set
+      expect(content._parent).toBeDefined()
+
+      t.dispose()
+      // Parent reference should be cleared
+      expect(content._parent).toBeNull()
+    })
+
+    it('should mark as disposed on dispose', () => {
+      const t = tabs()
+      t.dispose()
+      expect((t as any)._disposed).toBe(true)
+    })
+
+    it('should not throw when disposing already disposed tabs', () => {
+      const t = tabs()
+      t.dispose()
+      expect(() => t.dispose()).not.toThrow()
+    })
+
+    it('should not focus when disposed', () => {
+      const handler = vi.fn()
+      const t = tabs().onFocus(handler)
+      t.dispose()
+
+      t.focus()
+      expect(handler).not.toHaveBeenCalled()
+      expect(t.isFocused).toBe(false)
+    })
+  })
+
+  describe('navigation edge cases', () => {
+    it('should not move when all tabs are disabled (selectNext)', () => {
+      const allDisabled = [
+        { label: 'Tab 1', content: text('1'), disabled: true },
+        { label: 'Tab 2', content: text('2'), disabled: true }
+      ]
+      const t = tabs().tabs(allDisabled).selected(0)
+
+      ;(t as any).selectNext()
+      expect(t.selectedIndex).toBe(0)
+    })
+
+    it('should not move when all tabs are disabled (selectPrevious)', () => {
+      const allDisabled = [
+        { label: 'Tab 1', content: text('1'), disabled: true },
+        { label: 'Tab 2', content: text('2'), disabled: true }
+      ]
+      const t = tabs().tabs(allDisabled).selected(1)
+
+      ;(t as any).selectPrevious()
+      expect(t.selectedIndex).toBe(1)
+    })
+
+    it('should handle alternating disabled tabs correctly', () => {
+      const alternating = [
+        { label: 'Tab 1', content: text('1'), disabled: true },
+        { label: 'Tab 2', content: text('2') },
+        { label: 'Tab 3', content: text('3'), disabled: true },
+        { label: 'Tab 4', content: text('4') }
+      ]
+      const t = tabs().tabs(alternating).selected(1)
+
+      ;(t as any).selectNext()
+      expect(t.selectedIndex).toBe(3) // Skips Tab 3
+    })
+
+    it('should handle navigation with only one enabled tab', () => {
+      const oneEnabled = [
+        { label: 'Tab 1', content: text('1'), disabled: true },
+        { label: 'Tab 2', content: text('2') },
+        { label: 'Tab 3', content: text('3'), disabled: true }
+      ]
+      const t = tabs().tabs(oneEnabled).selected(1)
+
+      ;(t as any).selectNext()
+      expect(t.selectedIndex).toBe(1) // Stays at Tab 2
+
+      ;(t as any).selectPrevious()
+      expect(t.selectedIndex).toBe(1) // Stays at Tab 2
+    })
+  })
+
+  describe('edge cases', () => {
+    it('should handle empty tabs array', () => {
+      const t = tabs().tabs([])
+      expect(t.tabCount).toBe(0)
+      expect(t.selectedTab).toBeUndefined()
+    })
+
+    it('should handle selected when tabs are empty', () => {
+      const t = tabs().tabs([])
+      t.selected(0)
+      expect(t.selectedIndex).toBe(0)
+    })
+
+    it('should handle selecting beyond tabs length', () => {
+      const t = tabs().tabs(createTestTabs())
+      t.selected(100)
+      expect(t.selectedIndex).toBe(2) // Clamped to last tab
+    })
+
+    it('should handle selecting negative index', () => {
+      const t = tabs().tabs(createTestTabs())
+      t.selected(-5)
+      expect(t.selectedIndex).toBe(0) // Clamped to first tab
+    })
+
+    it('should handle removing the currently selected tab', () => {
+      const t = tabs().tabs(createTestTabs()).selected(1)
+      t.removeTab(1)
+      // Selected index should adjust
+      expect(t.selectedIndex).toBe(1)
+      expect(t.selectedTab?.label).toBe('About')
+    })
+
+    it('should handle removing last tab when selected', () => {
+      const t = tabs().tabs(createTestTabs()).selected(2)
+      t.removeTab(2)
+      expect(t.selectedIndex).toBe(1)
+      expect(t.selectedTab?.label).toBe('Settings')
+    })
+
+    it('should handle removing first tab when selected', () => {
+      const t = tabs().tabs(createTestTabs()).selected(0)
+      t.removeTab(0)
+      // Should stay at index 0, which is now the second tab
+      expect(t.selectedIndex).toBe(0)
+      expect(t.selectedTab?.label).toBe('Settings')
+    })
+
+    it('should handle tabs without content', () => {
+      const t = tabs().tabs([{ label: 'No Content' }])
+      ;(t as any)._bounds = { x: 0, y: 0, width: 20, height: 10 }
+
+      const buffer = createBuffer(20, 10)
+      expect(() => t.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG })).not.toThrow()
+    })
+
+    it('should handle tabs with non-BaseNode content', () => {
+      // Content can be any type, not just BaseNode
+      const t = tabs().tabs([{ label: 'Tab', content: null as any }])
+      ;(t as any)._bounds = { x: 0, y: 0, width: 20, height: 10 }
+
+      const buffer = createBuffer(20, 10)
+      expect(() => t.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG })).not.toThrow()
+    })
+
+    it('should not emit change when selecting same tab', () => {
+      const handler = vi.fn()
+      const t = tabs().tabs(createTestTabs()).onChange(handler).selected(0)
+
+      t.selected(0) // Same selection
+      expect(handler).not.toHaveBeenCalled()
+    })
+
+    it('should handle position changes affecting content bounds', () => {
+      const content = text('Content')
+      const t = tabs().tabs([{ label: 'Tab', content }])
+      ;(t as any)._bounds = { x: 0, y: 0, width: 20, height: 10 }
+
+      const buffer = createBuffer(20, 10)
+
+      // Top position
+      t.position('top')
+      t.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG })
+      const topBounds = content._bounds
+      expect(topBounds?.y).toBe(1) // Content starts below tab bar
+      expect(topBounds?.height).toBe(9) // Height minus tab bar
+
+      // Bottom position
+      t.position('bottom')
+      t.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG })
+      const bottomBounds = content._bounds
+      expect(bottomBounds?.y).toBe(0) // Content starts at top
+      expect(bottomBounds?.height).toBe(9) // Height minus tab bar
+    })
+
+    it('should not render tab content when height is 1', () => {
+      const content = text('Content')
+      const t = tabs().tabs([{ label: 'Tab', content }])
+      ;(t as any)._bounds = { x: 0, y: 0, width: 20, height: 1 }
+
+      const buffer = createBuffer(20, 1)
+      t.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG })
+
+      // Content height would be 0, so it shouldn't render
+      // Bounds should still be set but height is 0
+      expect(content._bounds?.height).toBe(0)
+    })
+
+    it('should fill remaining tab bar with spaces', () => {
+      const t = tabs().tabs([{ label: 'Single', content: text('Test') }])
+      ;(t as any)._bounds = { x: 0, y: 0, width: 30, height: 10 }
+
+      const buffer = createBuffer(30, 10)
+      t.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG })
+
+      // After " Single " + separator, should be spaces
+      const cellAtEnd = buffer.get(28, 0)
+      expect(cellAtEnd?.char).toBe(' ')
+    })
+
+    it('should render tab separators between tabs', () => {
+      const t = tabs().tabs(createTestTabs())
+      ;(t as any)._bounds = { x: 0, y: 0, width: 50, height: 10 }
+
+      const buffer = createBuffer(50, 10)
+      t.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG })
+
+      // The separator should appear somewhere in the tab bar
+      let foundSeparator = false
+      for (let x = 0; x < 50; x++) {
+        const cell = buffer.get(x, 0)
+        if (cell?.char === '\u2502') { // │
+          foundSeparator = true
+          break
+        }
+      }
+      expect(foundSeparator).toBe(true)
+    })
+
+    it('should handle changing tabs to empty then back to populated', () => {
+      const t = tabs().tabs(createTestTabs()).selected(1)
+      t.tabs([])
+      expect(t.tabCount).toBe(0)
+      expect(t.selectedIndex).toBe(0)
+
+      t.tabs(createTestTabs())
+      expect(t.tabCount).toBe(3)
+      expect(t.selectedTab?.label).toBe('Home')
+    })
+  })
 })

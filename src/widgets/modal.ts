@@ -43,6 +43,11 @@ const modalStack: ModalNodeImpl[] = []
  * @internal
  */
 function getNextZIndex(): number {
+  // Prevent overflow - wrap around if we hit the limit
+  // Using Number.MAX_SAFE_INTEGER as a practical limit
+  if (globalZIndex >= Number.MAX_SAFE_INTEGER) {
+    globalZIndex = 0
+  }
   return ++globalZIndex
 }
 
@@ -158,6 +163,12 @@ export interface ModalNode extends Node {
   onOpen(handler: () => void): this
   onClose(handler: () => void): this
   onButton(handler: (value: string) => void): this
+
+  // Handler cleanup - prevent memory leaks
+  offOpen(handler: () => void): this
+  offClose(handler: () => void): this
+  offButton(handler: (value: string) => void): this
+  clearHandlers(): this
 
   // State
   readonly isOpen: boolean
@@ -293,7 +304,11 @@ class ModalNodeImpl extends ContainerNode implements ModalNode {
       pushModal(this)
       this.markDirty()
       for (const handler of this._onOpenHandlers) {
-        handler()
+        try {
+          handler()
+        } catch (err) {
+          console.error('[modal] onOpen handler error:', err)
+        }
       }
     }
     return this
@@ -307,7 +322,11 @@ class ModalNodeImpl extends ContainerNode implements ModalNode {
       removeModal(this)
       this.markDirty()
       for (const handler of this._onCloseHandlers) {
-        handler()
+        try {
+          handler()
+        } catch (err) {
+          console.error('[modal] onClose handler error:', err)
+        }
       }
     }
     return this
@@ -370,7 +389,11 @@ class ModalNodeImpl extends ContainerNode implements ModalNode {
       const btn = this._buttons[this._selectedButton]
       if (btn) {
         for (const handler of this._onButtonHandlers) {
-          handler(btn.value)
+          try {
+            handler(btn.value)
+          } catch (err) {
+            console.error('[modal] onButton handler error:', err)
+          }
         }
         this.close()
       }
@@ -391,6 +414,38 @@ class ModalNodeImpl extends ContainerNode implements ModalNode {
 
   onButton(handler: (value: string) => void): this {
     this._onButtonHandlers.push(handler)
+    return this
+  }
+
+  // Handler cleanup methods - prevent memory leaks
+  offOpen(handler: () => void): this {
+    const index = this._onOpenHandlers.indexOf(handler)
+    if (index > -1) {
+      this._onOpenHandlers.splice(index, 1)
+    }
+    return this
+  }
+
+  offClose(handler: () => void): this {
+    const index = this._onCloseHandlers.indexOf(handler)
+    if (index > -1) {
+      this._onCloseHandlers.splice(index, 1)
+    }
+    return this
+  }
+
+  offButton(handler: (value: string) => void): this {
+    const index = this._onButtonHandlers.indexOf(handler)
+    if (index > -1) {
+      this._onButtonHandlers.splice(index, 1)
+    }
+    return this
+  }
+
+  clearHandlers(): this {
+    this._onOpenHandlers = []
+    this._onCloseHandlers = []
+    this._onButtonHandlers = []
     return this
   }
 

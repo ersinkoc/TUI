@@ -404,7 +404,7 @@ class ListNodeImpl<T = unknown> extends LeafNode implements ListNode<T> {
 
   // Focus control
   focus(): this {
-    if (!this._focused) {
+    if (!this._focused && !this._disposed) {
       this._focused = true
       this.markDirty()
       this._focusHandlers.emit()
@@ -503,10 +503,16 @@ class ListNodeImpl<T = unknown> extends LeafNode implements ListNode<T> {
   handleMouse(x: number, y: number, action: string): boolean {
     const { x: bx, y: by, width, height } = this._bounds
 
+    // Validate bounds to prevent overflow
+    if (width <= 0 || height <= 0) {
+      return false
+    }
+
     // Check if click is inside list
     if (x >= bx && x < bx + width && y >= by && y < by + height) {
       if (action === 'press') {
         const itemIndex = this._scrollOffset + (y - by)
+        // Fixed: Add bounds checking to prevent index overflow
         if (itemIndex >= 0 && itemIndex < this._items.length) {
           const item = this._items[itemIndex]
           if (item && item.selectable !== false && !item.separator) {

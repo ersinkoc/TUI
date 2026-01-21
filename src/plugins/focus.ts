@@ -49,6 +49,10 @@ export interface FocusPluginAPI {
   registerFocusable(node: Node): void
   /** Unregister a node from focus system */
   unregisterFocusable(node: Node): void
+  /** Enable/disable focus handling */
+  setEnabled(value: boolean): void
+  /** Check if focus handling is enabled */
+  isEnabled(): boolean
 }
 
 // ============================================================
@@ -81,14 +85,20 @@ function isFocusable(node: BaseNode): boolean {
 /**
  * Collect all focusable nodes in tree order (depth-first).
  */
-function collectFocusable(node: BaseNode, result: BaseNode[] = []): BaseNode[] {
+function collectFocusable(node: BaseNode, result: BaseNode[] = [], depth: number = 0, maxDepth: number = 1000): BaseNode[] {
+  // Prevent stack overflow from circular references or extremely deep trees
+  if (depth > maxDepth) {
+    console.warn('[focus] Max recursion depth reached in collectFocusable')
+    return result
+  }
+
   if (isFocusable(node)) {
     result.push(node)
   }
 
   if (node instanceof ContainerNode) {
     for (const child of node._children) {
-      collectFocusable(child, result)
+      collectFocusable(child, result, depth + 1, maxDepth)
     }
   }
 
@@ -131,6 +141,7 @@ export function focusPlugin(options: FocusPluginOptions = {}): Plugin {
 
   let app: TUIApp | null = null
   let focusedNode: BaseNode | null = null
+  let enabled = true
   const manualFocusables: Set<Node> = new Set()
 
   /**
@@ -142,27 +153,40 @@ export function focusPlugin(options: FocusPluginOptions = {}): Plugin {
 
     const collected = collectFocusable(app.root)
 
+    // Filter out disposed nodes
+    const validCollected = collected.filter(node => {
+      const nodeWithDisposed = node as { _disposed?: boolean }
+      return !nodeWithDisposed._disposed && node.isVisible
+    })
+
     // Add manually registered nodes that aren't in the tree
     for (const node of manualFocusables) {
-      if (node instanceof BaseNode && !collected.includes(node)) {
-        if (isFocusable(node)) {
-          collected.push(node)
+      if (node instanceof BaseNode && !validCollected.includes(node)) {
+        const nodeWithDisposed = node as { _disposed?: boolean }
+        if (isFocusable(node) && !nodeWithDisposed._disposed && node.isVisible) {
+          validCollected.push(node)
         }
       }
     }
 
-    return collected
+    return validCollected
   }
 
   /**
    * Find node by ID in tree.
    */
-  function findNodeById(node: BaseNode, id: string): BaseNode | null {
+  function findNodeById(node: BaseNode, id: string, depth: number = 0, maxDepth: number = 1000): BaseNode | null {
+    // Prevent stack overflow from circular references or extremely deep trees
+    if (depth > maxDepth) {
+      console.warn('[focus] Max recursion depth reached in findNodeById')
+      return null
+    }
+
     if (node.id === id) return node
 
     if (node instanceof ContainerNode) {
       for (const child of node._children) {
-        const found = findNodeById(child, id)
+        const found = findNodeById(child, id, depth + 1, maxDepth)
         if (found) return found
       }
     }
@@ -170,58 +194,62 @@ export function focusPlugin(options: FocusPluginOptions = {}): Plugin {
     return null
   }
 
-  /**
-   * Focus a node.
-   */
-  function doFocus(node: BaseNode): void {
-    if (focusedNode === node) return
+/**
+ * Check if a node has focus method.
+ */
+function hasFocusMethod(node: Node): node is Node & { focus(): void } {
+  return 'focus' in node && typeof (node as { focus?: unknown }).focus === 'function'
+}
 
-    // Blur previous
-    if (focusedNode) {
-      const blurMethod = (focusedNode as { blur?: () => void }).blur
-      if (typeof blurMethod === 'function') {
-        blurMethod.call(focusedNode)
-      }
+/**
+ * Check if a node has blur method.
+ */
+function hasBlurMethod(node: Node): node is Node & { blur(): void } {
+  return 'blur' in node && typeof (node as { blur?: unknown }).blur === 'function'
+}
 
-      // Emit blur event
-      const onBlur = (focusedNode as { _onBlurHandlers?: (() => void)[] })._onBlurHandlers
-      if (Array.isArray(onBlur)) {
-        for (const handler of onBlur) {
-          handler()
-        }
-      }
-    }
+/**
+ * Focus a node.
+ */
+function doFocus(node: BaseNode): void {
+  if (focusedNode === node) return
 
-    focusedNode = node
+  // Check if node is disposed before focusing
+  const nodeWithDisposed = node as { _disposed?: boolean }
+  if (nodeWithDisposed._disposed) {
+    return
+  }
 
-    // Focus new
-    const focusMethod = (node as { focus?: () => void }).focus
-    if (typeof focusMethod === 'function') {
-      focusMethod.call(node)
-    }
-
-    // Emit focus event
-    const onFocus = (node as { _onFocusHandlers?: (() => void)[] })._onFocusHandlers
-    if (Array.isArray(onFocus)) {
-      for (const handler of onFocus) {
-        handler()
-      }
-    }
-
-    // Update app's focused node reference
-    if (app) {
-      ;(app as { focusedNode?: Node }).focusedNode = node
-    }
-
-    if (debug) {
-      console.error(`[focus] focused: ${node.type}#${node.id}`)
+  // Blur previous - use type-safe method
+  if (focusedNode) {
+    if (hasBlurMethod(focusedNode)) {
+      focusedNode.blur()
     }
   }
+
+  focusedNode = node
+
+  // Focus new - use type-safe method
+  if (hasFocusMethod(node)) {
+    node.focus()
+  }
+
+  // Update app's focused node reference
+  if (app) {
+    ;(app as { focusedNode?: Node }).focusedNode = node
+  }
+
+  if (debug) {
+    console.error(`[focus] focused: ${node.type}#${node.id}`)
+  }
+}
 
   /**
    * Handle key input for focus navigation.
    */
   function handleKeyInput(event: KeyEvent): boolean {
+    if (!enabled) return false
+
     // Tab navigation
     if (tabNavigation && event.name === 'tab') {
       if (event.shift) {
@@ -319,9 +347,8 @@ export function focusPlugin(options: FocusPluginOptions = {}): Plugin {
 
         blur: () => {
           if (focusedNode) {
-            const blurMethod = (focusedNode as { blur?: () => void }).blur
-            if (typeof blurMethod === 'function') {
-              blurMethod.call(focusedNode)
+            if (hasBlurMethod(focusedNode)) {
+              focusedNode.blur()
             }
             focusedNode = null
             if (app) {
@@ -334,12 +361,30 @@ export function focusPlugin(options: FocusPluginOptions = {}): Plugin {
         getFocusableNodes: () => getFocusableNodes(),
 
         registerFocusable: (node: Node) => {
+          if (!node) {
+            console.warn('[focus] Cannot register null/undefined as focusable')
+            return
+          }
+
+          // Check if node is already disposed
+          const nodeWithDisposed = node as { _disposed?: boolean }
+          if (nodeWithDisposed._disposed) {
+            console.warn('[focus] Cannot register disposed node as focusable')
+            return
+          }
+
           manualFocusables.add(node)
         },
 
         unregisterFocusable: (node: Node) => {
           manualFocusables.delete(node)
-        }
+        },
+
+        setEnabled: (value: boolean) => {
+          enabled = value
+        },
+
+        isEnabled: () => enabled
       }
 
       // Set up key listener for focus navigation
@@ -375,6 +420,7 @@ export function focusPlugin(options: FocusPluginOptions = {}): Plugin {
     destroy(): void {
       focusedNode = null
       manualFocusables.clear()
+      enabled = true
       app = null
     }
   }

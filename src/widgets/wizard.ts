@@ -119,6 +119,7 @@ class WizardNodeImpl extends ContainerNode implements WizardNode {
   private _onStepChangeHandlers: ((step: number, stepId: string) => void)[] = []
   private _onCompleteHandlers: (() => void)[] = []
   private _onValidationErrorHandlers: ((stepId: string) => void)[] = []
+  private _isNavigating = false
 
   constructor(props?: WizardProps) {
     super()
@@ -253,47 +254,58 @@ class WizardNodeImpl extends ContainerNode implements WizardNode {
 
   // Navigation
   async next(): Promise<boolean> {
-    if (this._currentStep >= this._steps.length - 1) {
-      // Complete wizard
+    // Guard against concurrent navigation
+    if (this._isNavigating) {
+      return false
+    }
+
+    try {
+      this._isNavigating = true
+
+      if (this._currentStep >= this._steps.length - 1) {
+        // Complete wizard
+        const currentStepObj = this._steps[this._currentStep]
+        if (currentStepObj) {
+          this._stepStatuses.set(currentStepObj.id, 'completed')
+        }
+        for (const handler of this._onCompleteHandlers) {
+          handler()
+        }
+        this.markDirty()
+        return true
+      }
+
       const currentStepObj = this._steps[this._currentStep]
+      if (currentStepObj?.validate) {
+        const isValid = await currentStepObj.validate()
+        if (!isValid) {
+          this._stepStatuses.set(currentStepObj.id, 'error')
+          for (const handler of this._onValidationErrorHandlers) {
+            handler(currentStepObj.id)
+          }
+          this.markDirty()
+          return false
+        }
+      }
+
+      // Mark current as completed
       if (currentStepObj) {
         this._stepStatuses.set(currentStepObj.id, 'completed')
       }
-      for (const handler of this._onCompleteHandlers) {
-        handler()
+
+      // Move to next
+      this._currentStep++
+      const nextStep = this._steps[this._currentStep]
+      if (nextStep) {
+        this._stepStatuses.set(nextStep.id, 'current')
       }
+
+      this.emitStepChange()
       this.markDirty()
       return true
+    } finally {
+      this._isNavigating = false
     }
-
-    const currentStepObj = this._steps[this._currentStep]
-    if (currentStepObj?.validate) {
-      const isValid = await currentStepObj.validate()
-      if (!isValid) {
-        this._stepStatuses.set(currentStepObj.id, 'error')
-        for (const handler of this._onValidationErrorHandlers) {
-          handler(currentStepObj.id)
-        }
-        this.markDirty()
-        return false
-      }
-    }
-
-    // Mark current as completed
-    if (currentStepObj) {
-      this._stepStatuses.set(currentStepObj.id, 'completed')
-    }
-
-    // Move to next
-    this._currentStep++
-    const nextStep = this._steps[this._currentStep]
-    if (nextStep) {
-      this._stepStatuses.set(nextStep.id, 'current')
-    }
-
-    this.emitStepChange()
-    this.markDirty()
-    return true
   }
 
   previous(): this {
@@ -321,11 +333,19 @@ class WizardNodeImpl extends ContainerNode implements WizardNode {
     let index: number
 
     if (typeof step === 'number') {
-      index = step
+      // Validate numeric index
+      if (!Number.isFinite(step) || step < 0) {
+        return this
+      }
+      index = Math.floor(step)
     } else {
+      if (!step) {
+        return this
+      }
       index = this._steps.findIndex(s => s.id === step)
     }
 
+    // Validate bounds
     if (index >= 0 && index < this._steps.length) {
       const currentStepObj = this._steps[this._currentStep]
       if (currentStepObj) {
@@ -456,8 +476,18 @@ class WizardNodeImpl extends ContainerNode implements WizardNode {
     const contentY = y + headerHeight
     const contentHeight = height - headerHeight
 
+    // Guard against division by zero
+    if (this._steps.length === 0) {
+      return
+    }
+
     // Render step indicators
     const stepWidth = Math.floor(width / this._steps.length)
+
+    // Guard against zero/negative step width
+    if (stepWidth <= 0) {
+      return
+    }
 
     for (let i = 0; i < this._steps.length; i++) {
       const step = this._steps[i]!
@@ -521,6 +551,11 @@ class WizardNodeImpl extends ContainerNode implements WizardNode {
     const indicatorWidth = 20
     const contentX = x + indicatorWidth + 1
     const contentWidth = width - indicatorWidth - 1
+
+    // Validate content width
+    if (contentWidth <= 0) {
+      return
+    }
 
     // Render step indicators
     let currentY = y
@@ -616,6 +651,7 @@ class WizardNodeImpl extends ContainerNode implements WizardNode {
     this._onStepChangeHandlers = []
     this._onCompleteHandlers = []
     this._onValidationErrorHandlers = []
+    this._isNavigating = false
     super.dispose()
   }
 }

@@ -485,4 +485,325 @@ describe('Accordion Widget', () => {
       expect(a.panelCount).toBe(2)
     })
   })
+
+  describe('handler cleanup', () => {
+    it('should remove onExpand handler with offExpand', () => {
+      let callCount = 0
+      const handler = () => {
+        callCount++
+      }
+      const a = accordion()
+        .addPanel({ id: 'p1', title: 'Panel 1', content: text('Content 1') })
+        .onExpand(handler)
+
+      a.expand('p1')
+      expect(callCount).toBe(1)
+
+      a.offExpand(handler)
+      a.expand('p1')
+      expect(callCount).toBe(1) // Should not increase
+    })
+
+    it('should remove specific onExpand handler when multiple exist', () => {
+      const handler1 = vi.fn()
+      const handler2 = vi.fn()
+      const a = accordion()
+        .addPanel({ id: 'p1', title: 'Panel 1', content: text('Content 1') })
+        .onExpand(handler1)
+        .onExpand(handler2)
+
+      a.expand('p1')
+      expect(handler1).toHaveBeenCalledTimes(1)
+      expect(handler2).toHaveBeenCalledTimes(1)
+
+      a.offExpand(handler1)
+      a.collapse('p1')
+      a.expand('p1')
+      expect(handler1).toHaveBeenCalledTimes(1) // Not called again
+      expect(handler2).toHaveBeenCalledTimes(2) // Still called
+    })
+
+    it('should be chainable after offExpand', () => {
+      const a = accordion()
+      const handler = vi.fn()
+      const result = a.onExpand(handler).offExpand(handler)
+      expect(result).toBe(a)
+    })
+
+    it('should handle offExpand with non-existent handler gracefully', () => {
+      const a = accordion()
+      const handler = vi.fn()
+      expect(() => a.offExpand(handler)).not.toThrow()
+    })
+
+    it('should remove onCollapse handler with offCollapse', () => {
+      let callCount = 0
+      const handler = () => {
+        callCount++
+      }
+      const a = accordion()
+        .addPanel({ id: 'p1', title: 'Panel 1', content: text('Content 1'), expanded: true })
+        .onCollapse(handler)
+
+      a.collapse('p1')
+      expect(callCount).toBe(1)
+
+      a.offCollapse(handler)
+      a.expand('p1')
+      a.collapse('p1')
+      expect(callCount).toBe(1) // Should not increase
+    })
+
+    it('should remove onFocus handler with offFocus', () => {
+      let callCount = 0
+      const handler = () => {
+        callCount++
+      }
+      const a = accordion().onFocus(handler)
+
+      a.focus()
+      expect(callCount).toBe(1)
+
+      a.offFocus(handler)
+      a.blur()
+      a.focus()
+      expect(callCount).toBe(1) // Should not increase
+    })
+
+    it('should remove onBlur handler with offBlur', () => {
+      let callCount = 0
+      const handler = () => {
+        callCount++
+      }
+      const a = accordion().onBlur(handler)
+
+      a.focus()
+      a.blur()
+      expect(callCount).toBe(1)
+
+      a.offBlur(handler)
+      a.focus()
+      a.blur()
+      expect(callCount).toBe(1) // Should not increase
+    })
+
+    it('should clear all handlers with clearHandlers', () => {
+      const expandHandler = vi.fn()
+      const collapseHandler = vi.fn()
+      const focusHandler = vi.fn()
+      const blurHandler = vi.fn()
+      const a = accordion()
+        .addPanel({ id: 'p1', title: 'Panel 1', content: text('Content 1'), expanded: true })
+        .onExpand(expandHandler)
+        .onCollapse(collapseHandler)
+        .onFocus(focusHandler)
+        .onBlur(blurHandler)
+
+      a.clearHandlers()
+
+      a.collapse('p1')
+      a.expand('p1')
+      a.focus()
+      a.blur()
+
+      expect(expandHandler).not.toHaveBeenCalled()
+      expect(collapseHandler).not.toHaveBeenCalled()
+      expect(focusHandler).not.toHaveBeenCalled()
+      expect(blurHandler).not.toHaveBeenCalled()
+    })
+
+    it('should be chainable after clearHandlers', () => {
+      const a = accordion()
+      const result = a.onExpand(vi.fn()).clearHandlers()
+      expect(result).toBe(a)
+    })
+
+    it('should allow adding handlers after clearHandlers', () => {
+      const handler = vi.fn()
+      const a = accordion()
+        .addPanel({ id: 'p1', title: 'Panel 1', content: text('Content 1') })
+        .onExpand(vi.fn())
+        .clearHandlers()
+        .onExpand(handler)
+
+      a.expand('p1')
+      expect(handler).toHaveBeenCalled()
+    })
+  })
+
+  describe('dispose', () => {
+    it('should clear all handlers on dispose', () => {
+      const expandHandler = vi.fn()
+      const collapseHandler = vi.fn()
+      const focusHandler = vi.fn()
+      const blurHandler = vi.fn()
+      const a = accordion()
+        .addPanel({ id: 'p1', title: 'Panel 1', content: text('Content 1') })
+        .onExpand(expandHandler)
+        .onCollapse(collapseHandler)
+        .onFocus(focusHandler)
+        .onBlur(blurHandler)
+
+      a.dispose()
+
+      a.expand('p1')
+      a.collapse('p1')
+      a.focus()
+      a.blur()
+
+      expect(expandHandler).not.toHaveBeenCalled()
+      expect(collapseHandler).not.toHaveBeenCalled()
+      expect(focusHandler).not.toHaveBeenCalled()
+      expect(blurHandler).not.toHaveBeenCalled()
+    })
+
+    it('should clear panels on dispose', () => {
+      const a = accordion()
+        .addPanel({ id: 'p1', title: 'Panel 1', content: text('Content 1') })
+        .addPanel({ id: 'p2', title: 'Panel 2', content: text('Content 2') })
+
+      a.dispose()
+      expect(a.panelCount).toBe(0)
+      expect(a.expandedPanels).toEqual([])
+    })
+
+    it('should clear content parent references on dispose', () => {
+      const content = text('Test')
+      const a = accordion().addPanel({ id: 'p1', title: 'Panel 1', content })
+      // Content parent should be set
+      expect(content._parent).toBeDefined()
+
+      a.dispose()
+      // Parent reference should be cleared
+      expect(content._parent).toBeNull()
+    })
+
+    it('should mark as disposed on dispose', () => {
+      const a = accordion()
+      a.dispose()
+      expect((a as any)._disposed).toBe(true)
+    })
+
+    it('should not throw when disposing already disposed accordion', () => {
+      const a = accordion()
+      a.dispose()
+      expect(() => a.dispose()).not.toThrow()
+    })
+
+    it('should not focus when disposed', () => {
+      const handler = vi.fn()
+      const a = accordion().onFocus(handler)
+      a.dispose()
+
+      a.focus()
+      expect(handler).not.toHaveBeenCalled()
+      expect(a.isFocused).toBe(false)
+    })
+  })
+
+  describe('edge cases', () => {
+    it('should not expand all when not in multiple mode', () => {
+      const a = accordion({ multiple: false })
+        .addPanel({ id: 'p1', title: 'Panel 1', content: text('Content 1') })
+        .addPanel({ id: 'p2', title: 'Panel 2', content: text('Content 2') })
+
+      a.expandAll()
+      // Should only expand first panel in single mode
+      expect(a.expandedPanels.length).toBe(0)
+    })
+
+    it('should not collapse all when not collapsible', () => {
+      const a = accordion({ collapsible: false })
+        .addPanel({ id: 'p1', title: 'Panel 1', content: text('Content 1'), expanded: true })
+
+      a.collapseAll()
+      expect(a.expandedPanels).toContain('p1')
+    })
+
+    it('should handle removing non-existent panel', () => {
+      const a = accordion()
+        .addPanel({ id: 'p1', title: 'Panel 1', content: text('Content 1') })
+
+      a.removePanel('non-existent')
+      expect(a.panelCount).toBe(1)
+    })
+
+    it('should handle focus navigation with no panels', () => {
+      const a = accordion()
+
+      a.focusNext()
+      a.focusPrevious()
+      expect(a.panelCount).toBe(0)
+      expect(a.focusedPanel).toBeNull()
+    })
+
+    it('should handle expand on non-existent panel', () => {
+      const a = accordion()
+      a.expand('non-existent')
+      expect(a.expandedPanels).toEqual([])
+    })
+
+    it('should handle collapse on non-existent panel', () => {
+      const a = accordion()
+      a.collapse('non-existent')
+      expect(a.expandedPanels).toEqual([])
+    })
+
+    it('should handle toggle on non-existent panel', () => {
+      const a = accordion()
+      a.toggle('non-existent')
+      expect(a.expandedPanels).toEqual([])
+    })
+
+    it('should handle keyboard navigation with no panels', () => {
+      const a = accordion().focus()
+
+      const downResult = (a as any).handleKey('down', false)
+      const upResult = (a as any).handleKey('up', false)
+      const enterResult = (a as any).handleKey('enter', false)
+
+      expect(downResult).toBe(false)
+      expect(upResult).toBe(false)
+      expect(enterResult).toBe(false)
+    })
+
+    it('should not expand disabled panel via keyboard', () => {
+      const a = accordion()
+        .addPanel({ id: 'p1', title: 'Panel 1', content: text('Content 1'), disabled: true })
+        .focus()
+
+      ;(a as any).handleKey('enter', false)
+      expect(a.expandedPanels).not.toContain('p1')
+    })
+
+    it('should handle setting panels clears old panel parents', () => {
+      const oldContent = text('Old')
+      const a = accordion().addPanel({ id: 'p1', title: 'Panel 1', content: oldContent })
+      expect(oldContent._parent).toBe(a)
+
+      const newContent = text('New')
+      a.panels([{ id: 'p2', title: 'Panel 2', content: newContent }])
+      expect(oldContent._parent).toBeNull()
+      expect(newContent._parent).toBe(a)
+    })
+
+    it('should handle adding panel with existing parent', () => {
+      const content = text('Test')
+      const a1 = accordion().addPanel({ id: 'p1', title: 'Panel 1', content })
+      expect(content._parent).toBe(a1)
+
+      const a2 = accordion().addPanel({ id: 'p2', title: 'Panel 2', content })
+      expect(content._parent).toBe(a2)
+    })
+
+    it('should handle expandAll with disabled panels', () => {
+      const a = accordion({ multiple: true })
+        .addPanel({ id: 'p1', title: 'Panel 1', content: text('Content 1'), disabled: true })
+        .addPanel({ id: 'p2', title: 'Panel 2', content: text('Content 2') })
+
+      a.expandAll()
+      expect(a.expandedPanels).not.toContain('p1')
+      expect(a.expandedPanels).toContain('p2')
+    })
+  })
 })

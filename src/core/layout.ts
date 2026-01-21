@@ -267,17 +267,35 @@ function layoutChildren(node: Node): void {
  * ```
  */
 export function resolveDimension(dim: Dimension | undefined, available: number): number {
+  // Validate available space
+  if (!isFinite(available) || available <= 0) {
+    return 0
+  }
+
   if (dim === undefined || dim === 'auto') {
     return available
   }
 
   if (typeof dim === 'number') {
-    return dim
+    // Validate and clamp numeric dimension
+    if (!isFinite(dim)) {
+      return available
+    }
+    return Math.max(0, Math.floor(dim))
   }
 
   // Percentage
-  const percent = parseFloat(dim) / 100
-  return Math.floor(available * percent)
+  const percentStr = dim.replace('%', '')
+  const percent = parseFloat(percentStr)
+
+  // Validate parsed percentage
+  if (!isFinite(percent) || isNaN(percent)) {
+    return available
+  }
+
+  // Clamp percentage to reasonable bounds (0% to 1000%)
+  const clampedPercent = Math.max(0, Math.min(1000, percent))
+  return Math.floor((available * clampedPercent) / 100)
 }
 
 /**

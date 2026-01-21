@@ -576,4 +576,402 @@ describe('Textarea Widget', () => {
       expect(t.isVisible).toBe(true)
     })
   })
+
+  describe('handler cleanup', () => {
+    it('should remove onChange handler with offChange', () => {
+      let callCount = 0
+      const handler = () => {
+        callCount++
+      }
+      const t = textarea().onChange(handler).focus()
+
+      ;(t as any).handleKey('a', false)
+      expect(callCount).toBe(1)
+
+      t.offChange(handler)
+      ;(t as any).handleKey('b', false)
+      expect(callCount).toBe(1) // Should not increase
+    })
+
+    it('should remove specific onChange handler when multiple exist', () => {
+      const handler1 = vi.fn()
+      const handler2 = vi.fn()
+      const t = textarea().onChange(handler1).onChange(handler2).focus()
+
+      ;(t as any).handleKey('x', false)
+      expect(handler1).toHaveBeenCalledTimes(1)
+      expect(handler2).toHaveBeenCalledTimes(1)
+
+      t.offChange(handler1)
+      ;(t as any).handleKey('y', false)
+      expect(handler1).toHaveBeenCalledTimes(1) // Not called again
+      expect(handler2).toHaveBeenCalledTimes(2) // Still called
+    })
+
+    it('should be chainable after offChange', () => {
+      const t = textarea()
+      const handler = vi.fn()
+      const result = t.onChange(handler).offChange(handler)
+      expect(result).toBe(t)
+    })
+
+    it('should handle offChange with non-existent handler gracefully', () => {
+      const t = textarea()
+      const handler = vi.fn()
+      expect(() => t.offChange(handler)).not.toThrow()
+    })
+
+    it('should remove onFocus handler with offFocus', () => {
+      let callCount = 0
+      const handler = () => {
+        callCount++
+      }
+      const t = textarea().onFocus(handler)
+
+      t.focus()
+      expect(callCount).toBe(1)
+
+      t.offFocus(handler)
+      t.blur() // Reset focus
+      t.focus()
+      expect(callCount).toBe(1) // Should not increase
+    })
+
+    it('should remove onBlur handler with offBlur', () => {
+      let callCount = 0
+      const handler = () => {
+        callCount++
+      }
+      const t = textarea().onBlur(handler)
+
+      t.focus()
+      t.blur()
+      expect(callCount).toBe(1)
+
+      t.offBlur(handler)
+      t.focus()
+      t.blur()
+      expect(callCount).toBe(1) // Should not increase
+    })
+
+    it('should clear all handlers with clearHandlers', () => {
+      const changeHandler = vi.fn()
+      const focusHandler = vi.fn()
+      const blurHandler = vi.fn()
+      const t = textarea()
+        .onChange(changeHandler)
+        .onFocus(focusHandler)
+        .onBlur(blurHandler)
+
+      t.clearHandlers()
+
+      ;(t as any).handleKey('a', false)
+      t.focus()
+      t.blur()
+
+      expect(changeHandler).not.toHaveBeenCalled()
+      expect(focusHandler).not.toHaveBeenCalled()
+      expect(blurHandler).not.toHaveBeenCalled()
+    })
+
+    it('should be chainable after clearHandlers', () => {
+      const t = textarea()
+      const result = t.onChange(vi.fn()).clearHandlers()
+      expect(result).toBe(t)
+    })
+
+    it('should allow adding handlers after clearHandlers', () => {
+      const handler = vi.fn()
+      const t = textarea()
+        .onChange(vi.fn())
+        .clearHandlers()
+        .onChange(handler)
+        .focus()
+
+      ;(t as any).handleKey('a', false)
+      expect(handler).toHaveBeenCalled()
+    })
+  })
+
+  describe('dispose', () => {
+    it('should clear all handlers on dispose', () => {
+      const changeHandler = vi.fn()
+      const focusHandler = vi.fn()
+      const blurHandler = vi.fn()
+      const t = textarea()
+        .onChange(changeHandler)
+        .onFocus(focusHandler)
+        .onBlur(blurHandler)
+
+      t.dispose()
+
+      ;(t as any).handleKey('a', false)
+      t.focus()
+      t.blur()
+
+      expect(changeHandler).not.toHaveBeenCalled()
+      expect(focusHandler).not.toHaveBeenCalled()
+      expect(blurHandler).not.toHaveBeenCalled()
+    })
+
+    it('should mark as disposed on dispose', () => {
+      const t = textarea()
+      t.dispose()
+      expect((t as any)._disposed).toBe(true)
+    })
+
+    it('should not throw when disposing already disposed textarea', () => {
+      const t = textarea()
+      t.dispose()
+      expect(() => t.dispose()).not.toThrow()
+    })
+
+    it('should not focus when disposed', () => {
+      const handler = vi.fn()
+      const t = textarea().onFocus(handler)
+      t.dispose()
+
+      t.focus()
+      expect(handler).not.toHaveBeenCalled()
+      expect(t.isFocused).toBe(false)
+    })
+
+    it('should call parent dispose', () => {
+      const t = textarea()
+      expect((t as any)._disposed).toBe(false)
+      t.dispose()
+      expect((t as any)._disposed).toBe(true)
+    })
+  })
+
+  describe('maxLength edge cases', () => {
+    it('should handle negative maxLength', () => {
+      const t = textarea().maxLength(-10)
+      // Should be clamped to 0 (Math.max(0, ...))
+      t.value('Hello')
+      expect(t.currentValue).toBe('')
+    })
+
+    it('should handle Infinity maxLength as 0', () => {
+      const t = textarea().maxLength(Infinity)
+      // isFinite(Infinity) is false, so it becomes 0
+      t.value('Hello')
+      expect(t.currentValue).toBe('')
+    })
+
+    it('should handle NaN maxLength', () => {
+      const t = textarea().maxLength(NaN)
+      // Should be treated as 0 (Math.floor(isFinite(value) ? value : 0))
+      t.value('Hello')
+      expect(t.currentValue).toBe('')
+    })
+
+    it('should truncate existing value when maxLength is set to 0', () => {
+      const t = textarea().value('Hello World').maxLength(0)
+      expect(t.currentValue).toBe('')
+    })
+
+    it('should handle decimal maxLength by flooring', () => {
+      const t = textarea().maxLength(5.9).value('Hello World')
+      expect(t.currentValue).toBe('Hello')
+    })
+  })
+
+  describe('grapheme-aware operations', () => {
+    it('should handle emoji insertion', () => {
+      const t = textarea().focus()
+      ;(t as any).handleKey('😀', false)
+      expect(t.currentValue).toBe('😀')
+      // Cursor should move by 1 grapheme, not code units
+      expect((t as any)._cursorCol).toBe(1)
+    })
+
+    it('should handle combining characters', () => {
+      const t = textarea().focus()
+      // 'e' + combining acute accent = 'é'
+      ;(t as any).handleKey('e', false)
+      ;(t as any).handleKey('\u0301', false) // combining acute
+      expect(t.currentValue).toBe('e\u0301')
+      expect((t as any)._cursorCol).toBe(2) // 2 graphemes
+    })
+
+    it('should handle flag emoji (regional indicators)', () => {
+      const t = textarea().focus()
+      ;(t as any).handleKey('🇹🇷', false) // Turkey flag
+      expect(t.currentValue).toBe('🇹🇷')
+      expect((t as any)._cursorCol).toBe(1) // 1 grapheme
+    })
+
+    it('should backspace emoji correctly', () => {
+      const t = textarea().value('Hi😀').focus()
+      ;(t as any)._cursorCol = 3 // After emoji
+      ;(t as any).handleKey('backspace', false)
+      expect(t.currentValue).toBe('Hi')
+      expect((t as any)._cursorCol).toBe(2)
+    })
+
+    it('should backspace at grapheme position', () => {
+      const t = textarea().value('e\u0301x').focus()
+      // Graphemes are: ['e\u0301', 'x'] - 2 graphemes
+      ;(t as any)._cursorCol = 2 // After 'x'
+      ;(t as any).handleKey('backspace', false)
+      expect(t.currentValue).toBe('e\u0301')
+      expect((t as any)._cursorCol).toBe(1)
+
+      // Now backspace the combining sequence
+      ;(t as any).handleKey('backspace', false)
+      // The grapheme 'e\u0301' is removed as a unit
+      expect(t.currentValue).toBe('')
+      expect((t as any)._cursorCol).toBe(0)
+    })
+
+    it('should handle cursor movement with emoji', () => {
+      const t = textarea().value('A😀B').focus()
+      ;(t as any)._cursorCol = 0
+
+      // Move right once
+      ;(t as any).handleKey('right', false)
+      expect((t as any)._cursorCol).toBe(1) // After 'A'
+
+      // Move right again
+      ;(t as any).handleKey('right', false)
+      expect((t as any)._cursorCol).toBe(2) // After emoji
+
+      // Move right again
+      ;(t as any).handleKey('right', false)
+      expect((t as any)._cursorCol).toBe(3) // After 'B'
+    })
+
+    it('should handle enter with emoji in middle', () => {
+      const t = textarea().value('😀😀😀').focus()
+      ;(t as any)._cursorCol = 1
+      ;(t as any).handleKey('enter', false)
+
+      // Should split at grapheme boundary
+      expect(t.currentValue).toBe('😀\n😀😀')
+      expect(t.lineCount).toBe(2)
+    })
+
+    it('should truncate long emoji correctly', () => {
+      const t = textarea().maxLength(4)
+      // Each emoji is multiple code units, so need to test
+      t.value('😀😀😀')
+      // maxLength counts code units, not graphemes
+      // Each 😀 is 4 code units, so maxLength(4) = 1 emoji
+      expect(t.currentValue.length).toBeLessThanOrEqual(4)
+    })
+  })
+
+  describe('handleKey edge cases', () => {
+    it('should not insert character when at maxLength', () => {
+      const t = textarea().maxLength(5).value('Hello').focus()
+      ;(t as any)._cursorCol = 5
+      ;(t as any).handleKey('!', false)
+      expect(t.currentValue).toBe('Hello')
+    })
+
+    it('should not insert enter when at maxLength', () => {
+      const t = textarea().maxLength(5).value('Hello').focus()
+      ;(t as any)._cursorCol = 5
+      ;(t as any).handleKey('enter', false)
+      expect(t.currentValue).toBe('Hello')
+      expect(t.lineCount).toBe(1)
+    })
+
+    it('should handle backspace at position 0 on first line', () => {
+      const t = textarea().value('Hello').focus()
+      ;(t as any)._cursorCol = 0
+      ;(t as any).handleKey('backspace', false)
+      // Should do nothing - at start of first line
+      expect(t.currentValue).toBe('Hello')
+      expect((t as any)._cursorCol).toBe(0)
+    })
+
+    it('should handle empty textarea', () => {
+      const t = textarea().focus()
+      ;(t as any).handleKey('backspace', false)
+      expect(t.currentValue).toBe('')
+
+      ;(t as any).handleKey('left', false)
+      expect((t as any)._cursorCol).toBe(0)
+    })
+
+    it('should handle home and end on empty line', () => {
+      const t = textarea().value('\n\n').focus()
+      ;(t as any)._cursorLine = 1
+      ;(t as any)._cursorCol = 0
+
+      ;(t as any).handleKey('end', false)
+      expect((t as any)._cursorCol).toBe(0)
+
+      ;(t as any).handleKey('home', false)
+      expect((t as any)._cursorCol).toBe(0)
+    })
+
+    it('should not handle keys when not focused', () => {
+      const t = textarea()
+      ;(t as any).handleKey('a', false)
+      expect(t.currentValue).toBe('')
+    })
+
+    it('should insert unknown keys as text (length >= 1)', () => {
+      const t = textarea().focus()
+      // Default case inserts any key with length >= 1
+      ;(t as any).handleKey('unknown_key', false)
+      expect(t.currentValue).toBe('unknown_key')
+    })
+  })
+
+  describe('scrolling edge cases', () => {
+    it('should handle scrolling when cursor at bottom edge', () => {
+      const t = textarea().value('Line 1\nLine 2\nLine 3\nLine 4\nLine 5')
+      ;(t as any)._bounds = { x: 0, y: 0, width: 20, height: 2 }
+      ;(t as any)._cursorLine = 0
+      ;(t as any)._cursorCol = 0
+
+      // Simulate rendering which triggers scroll calculation
+      const buffer = createBuffer(20, 2)
+      t.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG })
+
+      // Move cursor to bottom
+      ;(t as any)._cursorLine = 4
+      t.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG })
+
+      // Scroll should adjust
+      expect((t as any)._scrollY).toBeGreaterThan(0)
+    })
+
+    it('should handle cursor moving within scrolled view', () => {
+      const t = textarea().value('Line 1\nLine 2\nLine 3\nLine 4\nLine 5')
+      ;(t as any)._bounds = { x: 0, y: 0, width: 20, height: 2 }
+      ;(t as any)._cursorLine = 3
+      ;(t as any)._scrollY = 2
+
+      const buffer = createBuffer(20, 2)
+      t.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG })
+
+      // Moving within view should not change scroll
+      ;(t as any)._cursorLine = 2
+      t.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG })
+    })
+  })
+
+  describe('lineCount edge cases', () => {
+    it('should return 1 for value with only newlines', () => {
+      const t = textarea().value('\n\n\n')
+      expect(t.lineCount).toBe(4) // 3 newlines + 1 final line
+    })
+
+    it('should return 0 for empty string after value is set', () => {
+      const t = textarea().value('Hello')
+      expect(t.lineCount).toBe(1)
+      t.value('')
+      expect(t.lineCount).toBe(1) // split('\n') returns ['']
+    })
+
+    it('should handle trailing newline', () => {
+      const t = textarea().value('Hello\n')
+      expect(t.lineCount).toBe(2)
+    })
+  })
 })

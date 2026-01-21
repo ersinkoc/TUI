@@ -101,6 +101,11 @@ export function inputPlugin(options: InputPluginOptions = {}): Plugin {
     const events = keyParser.parse(data)
 
     for (const event of events) {
+      // Validate event structure
+      if (!event || typeof event.name !== 'string' || event.name.length === 0) {
+        continue
+      }
+
       if (debug) {
         console.error(
           `[input] key: ${event.name} ctrl=${event.ctrl} alt=${event.alt} shift=${event.shift}`
@@ -111,10 +116,16 @@ export function inputPlugin(options: InputPluginOptions = {}): Plugin {
       let handled = false
       for (const binding of bindings) {
         if (matchKey(event, binding.key)) {
-          const result = binding.handler(event)
-          if (result !== false) {
-            handled = true
-            break
+          try {
+            const result = binding.handler(event)
+            if (result === true) {
+              handled = true
+              break
+            }
+            // If result is false or undefined, continue trying other bindings
+          } catch (err) {
+            // Log error but don't crash
+            console.error('[input] Handler error:', err)
           }
         }
       }
@@ -127,24 +138,48 @@ export function inputPlugin(options: InputPluginOptions = {}): Plugin {
   }
 
   /**
+   * Validate a KeyEvent structure.
+   */
+  function isValidKeyEvent(event: KeyEvent): boolean {
+    return !!event && typeof event.name === 'string' && event.name.length > 0
+  }
+
+  /**
    * Emit key event to the app and focused node.
    */
   function emitKeyEvent(event: KeyEvent): void {
     /* c8 ignore next */
     if (!app) return
 
+    // Validate event before emitting
+    if (!isValidKeyEvent(event)) {
+      return
+    }
+
     // Emit on app
     if (typeof (app as { emit?: (name: string, event: KeyEvent) => void }).emit === 'function') {
-      ;(app as { emit: (name: string, event: KeyEvent) => void }).emit('key', event)
+      try {
+        ;(app as { emit: (name: string, event: KeyEvent) => void }).emit('key', event)
+      } catch (err) {
+        console.error('[input] App emit error:', err)
+      }
     }
 
     // Route to focused node if available
     const focusedNode = (app as { focusedNode?: Node }).focusedNode
     if (focusedNode) {
       // Check if node has handleKey method
-      const nodeWithHandler = focusedNode as { handleKey?: (event: KeyEvent) => void }
+      const nodeWithHandler = focusedNode as { handleKey?: (event: KeyEvent) => void; _disposed?: boolean }
       if (typeof nodeWithHandler.handleKey === 'function') {
-        nodeWithHandler.handleKey(event)
+        // Check if node is disposed
+        if (nodeWithHandler._disposed) {
+          return
+        }
+        try {
+          nodeWithHandler.handleKey(event)
+        } catch (err) {
+          console.error('[input] Node handler error:', err)
+        }
       }
     }
   }
@@ -183,12 +218,21 @@ export function inputPlugin(options: InputPluginOptions = {}): Plugin {
         simulate: (event: KeyEvent) => {
           if (!enabled) return
 
+          // Validate event structure
+          if (!isValidKeyEvent(event)) {
+            return
+          }
+
           // Check bindings
           for (const binding of bindings) {
             if (matchKey(event, binding.key)) {
-              const result = binding.handler(event)
-              if (result !== false) {
-                return
+              try {
+                const result = binding.handler(event)
+                if (result === true) {
+                  return
+                }
+              } catch (err) {
+                console.error('[input] Simulate handler error:', err)
               }
             }
           }
@@ -206,7 +250,12 @@ export function inputPlugin(options: InputPluginOptions = {}): Plugin {
 
       // Set up stdin listening
       if (process.stdin.isTTY && rawMode) {
-        process.stdin.setRawMode(true)
+        try {
+          process.stdin.setRawMode(true)
+        } catch (err) {
+          console.error('[input] Failed to set raw mode:', err)
+          return
+        }
         process.stdin.resume()
         process.stdin.setEncoding('utf8')
 
@@ -226,7 +275,11 @@ export function inputPlugin(options: InputPluginOptions = {}): Plugin {
         stdinListener = null
 
         if (process.stdin.isTTY) {
-          process.stdin.setRawMode(false)
+          try {
+            process.stdin.setRawMode(false)
+          } catch (err) {
+            console.error('[input] Failed to disable raw mode:', err)
+          }
         }
       }
 

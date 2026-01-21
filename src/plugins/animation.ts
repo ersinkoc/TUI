@@ -193,8 +193,8 @@ export function animationPlugin(options: AnimationPluginOptions = {}): Plugin {
     lastFrameTime = now
     frameCount++
 
-    // Update FPS every second
-    if (frameCount % targetFPS === 0) {
+    // Update FPS every second - guard against division by zero and Infinity
+    if (frameCount % targetFPS === 0 && deltaTime > 0) {
       currentFPS = Math.round(1000 / deltaTime)
     }
 
@@ -241,6 +241,7 @@ export function animationPlugin(options: AnimationPluginOptions = {}): Plugin {
     if (!running) return
 
     running = false
+    currentFPS = 0
     if (animationTimer) {
       clearInterval(animationTimer)
       animationTimer = null

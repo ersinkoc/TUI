@@ -26,9 +26,22 @@ import { NAMED_COLORS, DEFAULT_FG, DEFAULT_BG } from '../constants'
  * ```
  */
 export function packColor(r: number, g: number, b: number, a: number = 255): number {
+  // Use bitwise masking to handle values outside 0-255 range
+  // This ensures that values like 256 are wrapped to 0, 257 to 1, etc.
+  r = r | 0
+  g = g | 0
+  b = b | 0
+  a = a | 0
+
   // Use >>> 0 to convert to unsigned 32-bit integer
-  // This prevents negative values when r >= 128 (e.g., 255 << 24 would be -16777216 without this)
   return (((r & 0xff) << 24) | ((g & 0xff) << 16) | ((b & 0xff) << 8) | (a & 0xff)) >>> 0
+}
+
+/**
+ * Clamp a color channel value to 0-255 range.
+ */
+function clampColorChannel(value: number): number {
+  return Math.max(0, Math.min(255, Math.floor(value)))
 }
 
 /**
@@ -66,25 +79,34 @@ export function unpackColor(packed: number): [number, number, number, number] {
  * ```
  */
 export function parseHexColor(hex: string): number | null {
+  if (!hex || typeof hex !== 'string') {
+    return null
+  }
+
   // Remove # prefix
   const h = hex.startsWith('#') ? hex.slice(1) : hex
 
-  let r: number,
-    g: number,
-    b: number,
-    a: number = 255
+  // Validate hex characters and non-empty string
+  if (h.length === 0 || !/^[0-9a-fA-F]*$/.test(h)) {
+    return null
+  }
+
+  let r: number
+  let g: number
+  let b: number
+  let a = 255
 
   if (h.length === 3) {
     // #RGB -> #RRGGBB
-    r = parseInt(h[0]! + h[0], 16)
-    g = parseInt(h[1]! + h[1], 16)
-    b = parseInt(h[2]! + h[2], 16)
+    r = parseInt(h[0]! + h[0]!, 16)
+    g = parseInt(h[1]! + h[1]!, 16)
+    b = parseInt(h[2]! + h[2]!, 16)
   } else if (h.length === 4) {
     // #RGBA -> #RRGGBBAA
-    r = parseInt(h[0]! + h[0], 16)
-    g = parseInt(h[1]! + h[1], 16)
-    b = parseInt(h[2]! + h[2], 16)
-    a = parseInt(h[3]! + h[3], 16)
+    r = parseInt(h[0]! + h[0]!, 16)
+    g = parseInt(h[1]! + h[1]!, 16)
+    b = parseInt(h[2]! + h[2]!, 16)
+    a = parseInt(h[3]! + h[3]!, 16)
   } else if (h.length === 6) {
     // #RRGGBB
     r = parseInt(h.slice(0, 2), 16)
@@ -100,7 +122,21 @@ export function parseHexColor(hex: string): number | null {
     return null
   }
 
-  if (isNaN(r) || isNaN(g) || isNaN(b) || isNaN(a)) {
+  // Validate parsed values
+  if (
+    isNaN(r) ||
+    r < 0 ||
+    r > 255 ||
+    isNaN(g) ||
+    g < 0 ||
+    g > 255 ||
+    isNaN(b) ||
+    b < 0 ||
+    b > 255 ||
+    isNaN(a) ||
+    a < 0 ||
+    a > 255
+  ) {
     return null
   }
 
@@ -120,6 +156,10 @@ export function parseHexColor(hex: string): number | null {
  * ```
  */
 export function parseRgbColor(rgb: string): number | null {
+  if (!rgb || typeof rgb !== 'string') {
+    return null
+  }
+
   // Match rgb(r, g, b) or rgba(r, g, b, a)
   const rgbMatch = rgb.match(
     /^rgba?\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*([\d.]+))?\s*\)$/i
@@ -136,20 +176,33 @@ export function parseRgbColor(rgb: string): number | null {
 
   if (rgbMatch[4] !== undefined) {
     const alpha = parseFloat(rgbMatch[4])
-    // If alpha is 0-1, convert to 0-255
-    a = alpha <= 1 ? Math.round(alpha * 255) : Math.round(alpha)
+
+    if (isNaN(alpha)) {
+      return null
+    }
+
+    // If alpha is in 0-1 range, convert to 0-255
+    // Use <= 1 to correctly identify 0-1 range values (0.5, 0.8, 1.0)
+    // Values > 1 are treated as already in 0-255 range (255, 128, etc.)
+    if (alpha <= 1) {
+      a = Math.round(alpha * 255)
+    } else {
+      a = Math.round(alpha)
+    }
   }
 
+  // Check for NaN values (return null for invalid numbers)
   if (isNaN(r) || isNaN(g) || isNaN(b) || isNaN(a)) {
     return null
   }
 
-  return packColor(
-    Math.max(0, Math.min(255, r)),
-    Math.max(0, Math.min(255, g)),
-    Math.max(0, Math.min(255, b)),
-    Math.max(0, Math.min(255, a))
-  )
+  // Clamp values to 0-255 range (instead of returning null)
+  const clampedR = Math.max(0, Math.min(255, r))
+  const clampedG = Math.max(0, Math.min(255, g))
+  const clampedB = Math.max(0, Math.min(255, b))
+  const clampedA = Math.max(0, Math.min(255, a))
+
+  return packColor(clampedR, clampedG, clampedB, clampedA)
 }
 
 /**
@@ -167,7 +220,7 @@ export function parseRgbColor(rgb: string): number | null {
  * ```
  */
 export function parseColor(value: string): number | null {
-  if (!value) {
+  if (!value || typeof value !== 'string') {
     return null
   }
 
@@ -252,8 +305,15 @@ export function packedToHex(packed: number, includeAlpha: boolean = false): stri
  * ```
  */
 export function packedToRgb(packed: number): string {
+  if (!Number.isFinite(packed)) {
+    return 'rgb(0, 0, 0)'
+  }
   const [r, g, b] = unpackColor(packed)
-  return `rgb(${r}, ${g}, ${b})`
+  // Handle potential NaN values from unpacking
+  const rr = isNaN(r) ? 0 : Math.max(0, Math.min(255, r))
+  const gg = isNaN(g) ? 0 : Math.max(0, Math.min(255, g))
+  const bb = isNaN(b) ? 0 : Math.max(0, Math.min(255, b))
+  return `rgb(${rr}, ${gg}, ${bb})`
 }
 
 /**
@@ -268,9 +328,18 @@ export function packedToRgb(packed: number): string {
  * ```
  */
 export function packedToRgba(packed: number): string {
+  if (!Number.isFinite(packed)) {
+    return 'rgba(0, 0, 0, 0)'
+  }
   const [r, g, b, a] = unpackColor(packed)
-  const alpha = (a / 255).toFixed(2).replace(/\.?0+$/, '')
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`
+  // Handle potential NaN values from unpacking
+  const rr = isNaN(r) ? 0 : Math.max(0, Math.min(255, r))
+  const gg = isNaN(g) ? 0 : Math.max(0, Math.min(255, g))
+  const bb = isNaN(b) ? 0 : Math.max(0, Math.min(255, b))
+  const aa = isNaN(a) ? 0 : Math.max(0, Math.min(255, a))
+  // Format alpha to 2 decimal places, removing trailing zeros but keeping at least one digit
+  const alpha = (aa / 255).toFixed(2).replace(/(\.\d*?[1-9])0+$|\.0+$/, '$1')
+  return `rgba(${rr}, ${gg}, ${bb}, ${alpha})`
 }
 
 // ============================================================
@@ -317,8 +386,13 @@ export function blendColors(fg: number, bg: number): number {
  * @returns Lightened color (packed)
  */
 export function lighten(packed: number, amount: number): number {
+  if (!Number.isFinite(packed) || !Number.isFinite(amount)) {
+    return packed
+  }
   const [r, g, b, a] = unpackColor(packed)
-  const factor = 1 + amount
+  // Clamp amount to reasonable range
+  const clampedAmount = Math.max(0, Math.min(1, amount))
+  const factor = 1 + clampedAmount
 
   return packColor(
     Math.min(255, Math.round(r * factor)),
@@ -336,8 +410,13 @@ export function lighten(packed: number, amount: number): number {
  * @returns Darkened color (packed)
  */
 export function darken(packed: number, amount: number): number {
+  if (!Number.isFinite(packed) || !Number.isFinite(amount)) {
+    return packed
+  }
   const [r, g, b, a] = unpackColor(packed)
-  const factor = 1 - amount
+  // Clamp amount to reasonable range
+  const clampedAmount = Math.max(0, Math.min(1, amount))
+  const factor = 1 - clampedAmount
 
   return packColor(
     Math.max(0, Math.round(r * factor)),

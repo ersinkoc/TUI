@@ -563,4 +563,375 @@ describe('Select Widget', () => {
       expect(s.isVisible).toBe(true)
     })
   })
+
+  describe('handler cleanup', () => {
+    it('should remove onSelect handler with offSelect', () => {
+      let callCount = 0
+      const handler = () => {
+        callCount++
+      }
+      const s = select().options(testOptions).onSelect(handler)
+
+      ;(s as any).confirm()
+      expect(callCount).toBe(1)
+
+      s.offSelect(handler)
+      ;(s as any).confirm()
+      expect(callCount).toBe(1) // Should not increase
+    })
+
+    it('should remove specific onSelect handler when multiple exist', () => {
+      const handler1 = vi.fn()
+      const handler2 = vi.fn()
+      const s = select().options(testOptions).onSelect(handler1).onSelect(handler2)
+
+      ;(s as any).confirm()
+      expect(handler1).toHaveBeenCalledTimes(1)
+      expect(handler2).toHaveBeenCalledTimes(1)
+
+      s.offSelect(handler1)
+      ;(s as any).confirm()
+      expect(handler1).toHaveBeenCalledTimes(1) // Not called again
+      expect(handler2).toHaveBeenCalledTimes(2) // Still called
+    })
+
+    it('should be chainable after offSelect', () => {
+      const s = select()
+      const handler = vi.fn()
+      const result = s.onSelect(handler).offSelect(handler)
+      expect(result).toBe(s)
+    })
+
+    it('should handle offSelect with non-existent handler gracefully', () => {
+      const s = select()
+      const handler = vi.fn()
+      expect(() => s.offSelect(handler)).not.toThrow()
+    })
+
+    it('should remove onChange handler with offChange', () => {
+      let callCount = 0
+      const handler = () => {
+        callCount++
+      }
+      const s = select().options(testOptions).onChange(handler)
+
+      s.selected(1)
+      expect(callCount).toBe(1)
+
+      s.offChange(handler)
+      s.selected(2)
+      expect(callCount).toBe(1) // Should not increase
+    })
+
+    it('should remove specific onChange handler when multiple exist', () => {
+      const handler1 = vi.fn()
+      const handler2 = vi.fn()
+      const s = select().options(testOptions).onChange(handler1).onChange(handler2)
+
+      s.selected(1)
+      expect(handler1).toHaveBeenCalledTimes(1)
+      expect(handler2).toHaveBeenCalledTimes(1)
+
+      s.offChange(handler1)
+      s.selected(2)
+      expect(handler1).toHaveBeenCalledTimes(1) // Not called again
+      expect(handler2).toHaveBeenCalledTimes(2) // Still called
+    })
+
+    it('should remove onFocus handler with offFocus', () => {
+      let callCount = 0
+      const handler = () => {
+        callCount++
+      }
+      const s = select().onFocus(handler)
+
+      s.focus()
+      expect(callCount).toBe(1)
+
+      s.offFocus(handler)
+      s.blur() // Reset focus
+      s.focus()
+      expect(callCount).toBe(1) // Should not increase
+    })
+
+    it('should remove onBlur handler with offBlur', () => {
+      let callCount = 0
+      const handler = () => {
+        callCount++
+      }
+      const s = select().onBlur(handler)
+
+      s.focus()
+      s.blur()
+      expect(callCount).toBe(1)
+
+      s.offBlur(handler)
+      s.focus()
+      s.blur()
+      expect(callCount).toBe(1) // Should not increase
+    })
+
+    it('should clear all handlers with clearHandlers', () => {
+      const selectHandler = vi.fn()
+      const changeHandler = vi.fn()
+      const focusHandler = vi.fn()
+      const blurHandler = vi.fn()
+      const s = select()
+        .options(testOptions)
+        .onSelect(selectHandler)
+        .onChange(changeHandler)
+        .onFocus(focusHandler)
+        .onBlur(blurHandler)
+
+      s.clearHandlers()
+
+      ;(s as any).confirm()
+      s.selected(1)
+      s.focus()
+      s.blur()
+
+      expect(selectHandler).not.toHaveBeenCalled()
+      expect(changeHandler).not.toHaveBeenCalled()
+      expect(focusHandler).not.toHaveBeenCalled()
+      expect(blurHandler).not.toHaveBeenCalled()
+    })
+
+    it('should be chainable after clearHandlers', () => {
+      const s = select()
+      const result = s.onSelect(vi.fn()).clearHandlers()
+      expect(result).toBe(s)
+    })
+
+    it('should allow adding handlers after clearHandlers', () => {
+      const handler = vi.fn()
+      const s = select()
+        .options(testOptions)
+        .onSelect(vi.fn())
+        .clearHandlers()
+        .onSelect(handler)
+
+      ;(s as any).confirm()
+      expect(handler).toHaveBeenCalled()
+    })
+  })
+
+  describe('dispose', () => {
+    it('should clear all handlers on dispose', () => {
+      const selectHandler = vi.fn()
+      const changeHandler = vi.fn()
+      const focusHandler = vi.fn()
+      const blurHandler = vi.fn()
+      const s = select()
+        .options(testOptions)
+        .onSelect(selectHandler)
+        .onChange(changeHandler)
+        .onFocus(focusHandler)
+        .onBlur(blurHandler)
+
+      s.dispose()
+
+      ;(s as any).confirm()
+      s.selected(1)
+      s.focus()
+      s.blur()
+
+      expect(selectHandler).not.toHaveBeenCalled()
+      expect(changeHandler).not.toHaveBeenCalled()
+      expect(focusHandler).not.toHaveBeenCalled()
+      expect(blurHandler).not.toHaveBeenCalled()
+    })
+
+    it('should clear options on dispose', () => {
+      const s = select().options(testOptions)
+      s.dispose()
+      expect(s.selectedItem).toBeUndefined()
+    })
+
+    it('should mark as disposed on dispose', () => {
+      const s = select()
+      s.dispose()
+      expect((s as any)._disposed).toBe(true)
+    })
+
+    it('should not throw when disposing already disposed select', () => {
+      const s = select()
+      s.dispose()
+      expect(() => s.dispose()).not.toThrow()
+    })
+
+    it('should not focus when disposed', () => {
+      const handler = vi.fn()
+      const s = select().onFocus(handler)
+      s.dispose()
+
+      s.focus()
+      expect(handler).not.toHaveBeenCalled()
+      expect(s.isFocused).toBe(false)
+    })
+  })
+
+  describe('navigation edge cases', () => {
+    it('should not move when all options are disabled (selectNext)', () => {
+      const allDisabled = [
+        { label: 'Opt 1', value: '1', disabled: true },
+        { label: 'Opt 2', value: '2', disabled: true },
+        { label: 'Opt 3', value: '3', disabled: true }
+      ]
+      const s = select().options(allDisabled).selected(0)
+
+      ;(s as any).selectNext()
+      expect(s.selectedIndex).toBe(0)
+    })
+
+    it('should not move when all options are disabled (selectPrevious)', () => {
+      const allDisabled = [
+        { label: 'Opt 1', value: '1', disabled: true },
+        { label: 'Opt 2', value: '2', disabled: true },
+        { label: 'Opt 3', value: '3', disabled: true }
+      ]
+      const s = select().options(allDisabled).selected(2)
+
+      ;(s as any).selectPrevious()
+      expect(s.selectedIndex).toBe(2)
+    })
+
+    it('should handle alternating disabled options correctly', () => {
+      const alternating = [
+        { label: 'Opt 1', value: '1', disabled: true },
+        { label: 'Opt 2', value: '2', disabled: false },
+        { label: 'Opt 3', value: '3', disabled: true },
+        { label: 'Opt 4', value: '4', disabled: false }
+      ]
+      const s = select().options(alternating).selected(0)
+
+      ;(s as any).selectNext()
+      expect(s.selectedIndex).toBe(1) // Skips to Opt 2
+    })
+
+    it('should handle navigation with only one enabled option', () => {
+      const oneEnabled = [
+        { label: 'Opt 1', value: '1', disabled: true },
+        { label: 'Opt 2', value: '2', disabled: false },
+        { label: 'Opt 3', value: '3', disabled: true }
+      ]
+      const s = select().options(oneEnabled).selected(1)
+
+      ;(s as any).selectNext()
+      expect(s.selectedIndex).toBe(1) // Stays at Opt 2
+
+      ;(s as any).selectPrevious()
+      expect(s.selectedIndex).toBe(1) // Stays at Opt 2
+    })
+  })
+
+  describe('edge cases', () => {
+    it('should handle empty options array', () => {
+      const s = select().options([])
+      expect(s.selectedItem).toBeUndefined()
+      expect(s.selectedIndex).toBe(0)
+    })
+
+    it('should handle selecting when options are empty', () => {
+      const s = select().options([])
+      s.selected(5)
+      expect(s.selectedIndex).toBe(0)
+    })
+
+    it('should handle confirm when no item is selected', () => {
+      const handler = vi.fn()
+      const s = select().onSelect(handler)
+
+      ;(s as any).confirm()
+      expect(handler).not.toHaveBeenCalled()
+    })
+
+    it('should handle changing options to empty array', () => {
+      const s = select().options(testOptions).selected(2)
+      s.options([])
+      expect(s.selectedIndex).toBe(0)
+      expect(s.selectedItem).toBeUndefined()
+    })
+
+    it('should handle changing options from empty to populated', () => {
+      const s = select().options([])
+      s.options(testOptions)
+      expect(s.selectedIndex).toBe(0)
+      expect(s.selectedItem).toEqual(testOptions[0])
+    })
+
+    it('should not emit change when selecting same index', () => {
+      const handler = vi.fn()
+      const s = select().options(testOptions).onChange(handler)
+
+      s.selected(0) // Already at 0
+      expect(handler).not.toHaveBeenCalled()
+    })
+
+    it('should ensureVisible is called on selection change', () => {
+      const manyOptions = Array.from({ length: 20 }, (_, i) => ({
+        label: `Option ${i + 1}`,
+        value: String(i + 1)
+      }))
+
+      const s = select().options(manyOptions).maxVisible(5)
+      s.selected(10)
+
+      // Should not throw, scrollOffset should be adjusted
+      expect(s.selectedIndex).toBe(10)
+    })
+
+    it('should handle options with null/undefined values gracefully', () => {
+      // Options can have optional disabled property
+      const s = select().options([
+        { label: 'A', value: 'a' },
+        { label: 'B', value: 'b' },
+        { label: 'C', value: 'c' }
+      ])
+
+      expect(() => {
+        ;(s as any).selectNext()
+        ;(s as any).selectPrevious()
+      }).not.toThrow()
+    })
+
+    it('should handle options with extra properties', () => {
+      interface ExtendedOption {
+        label: string
+        value: string
+        disabled?: boolean
+        extra?: string
+      }
+
+      const extendedOptions: ExtendedOption[] = [
+        { label: 'A', value: 'a', extra: 'foo' },
+        { label: 'B', value: 'b', extra: 'bar' }
+      ]
+
+      const s = select<ExtendedOption>().options(extendedOptions)
+      expect(s.selectedItem?.extra).toBe('foo')
+    })
+
+    it('should handle confirm when current item is disabled', () => {
+      const handler = vi.fn()
+      const s = select()
+        .options([{ label: 'Disabled', value: '1', disabled: true }])
+        .onSelect(handler)
+
+      ;(s as any).confirm()
+      expect(handler).not.toHaveBeenCalled()
+    })
+
+    it('should handle navigation at boundaries with disabled items', () => {
+      const options = [
+        { label: 'Opt 1', value: '1', disabled: true },
+        { label: 'Opt 2', value: '2' },
+        { label: 'Opt 3', value: '3' }
+      ]
+      const s = select().options(options).selected(2)
+
+      // Going back should skip disabled Opt 1
+      ;(s as any).selectPrevious()
+      expect(s.selectedIndex).toBe(1)
+    })
+  })
 })

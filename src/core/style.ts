@@ -105,9 +105,15 @@ export function computeAttrs(style: StyleProps): number {
  * @returns Style props
  */
 function getStyleProps(node: Node): StyleProps {
-  const anyNode = node as unknown as Record<string, unknown>
-  /* c8 ignore next */
-  return (anyNode._style as StyleProps) ?? {}
+  // Use type-safe optional chaining instead of unsafe assertion
+  // Check if node has the expected internal structure
+  if (node && typeof node === 'object' && '_style' in node) {
+    const nodeWithStyle = node as { _style?: StyleProps }
+    if (nodeWithStyle._style && typeof nodeWithStyle._style === 'object') {
+      return nodeWithStyle._style
+    }
+  }
+  return {}
 }
 
 /**

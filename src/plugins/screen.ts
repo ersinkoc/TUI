@@ -117,10 +117,14 @@ export function screenPlugin(options: ScreenPluginOptions = {}): Plugin {
    * Get current terminal size.
    */
   function getTerminalSize(): { width: number; height: number } {
-    return {
-      width: process.stdout.columns ?? 80,
-      height: process.stdout.rows ?? 24
-    }
+    const cols = process.stdout.columns
+    const rows = process.stdout.rows
+
+    // Validate and clamp values
+    const width = Number.isFinite(cols) && cols > 0 ? Math.min(cols, 10000) : 80
+    const height = Number.isFinite(rows) && rows > 0 ? Math.min(rows, 10000) : 24
+
+    return { width, height }
   }
 
   return {
@@ -128,50 +132,65 @@ export function screenPlugin(options: ScreenPluginOptions = {}): Plugin {
     version: '1.0.0',
 
     install(tuiApp: TUIApp): void {
+      // Store resize listener for cleanup
+      let resizeListener: (() => void) | null = null
+
+      // Safe stdout write helper
+      const safeWrite = (data: string): void => {
+        try {
+          process.stdout.write(data)
+        } catch (err) {
+          if (debug) {
+            console.error('[screen] stdout write error:', err)
+          }
+        }
+      }
+
       // Enter alternate screen
       if (altScreen) {
-        process.stdout.write(enterAltScreen())
+        safeWrite(enterAltScreen())
         inAltScreen = true
       }
 
       // Hide cursor
       if (shouldHideCursor) {
-        process.stdout.write(hideCursor())
+        safeWrite(hideCursor())
         cursorVisible = false
       }
 
       // Clear screen
       if (clearOnStart) {
-        process.stdout.write(clearScreen())
+        safeWrite(clearScreen())
       }
 
       // Enable bracketed paste
       if (bracketedPaste) {
-        process.stdout.write(enableBracketedPaste())
+        safeWrite(enableBracketedPaste())
       }
 
       // Set title
       if (title) {
-        process.stdout.write(setTerminalTitle(title))
+        safeWrite(setTerminalTitle(title))
       }
 
       // Expose API on app
       ;(tuiApp as TUIApp & { screen: ScreenPluginAPI }).screen = {
         setTitle: (newTitle: string) => {
+          if (!newTitle) return
           currentTitle = newTitle
-          process.stdout.write(setTerminalTitle(newTitle))
+          safeWrite(setTerminalTitle(newTitle))
         },
 
         showCursor: () => {
           if (!cursorVisible) {
-            process.stdout.write(showCursor())
+            safeWrite(showCursor())
             cursorVisible = true
           }
         },
 
         hideCursor: () => {
           if (cursorVisible) {
-            process.stdout.write(hideCursor())
+            safeWrite(hideCursor())
             cursorVisible = false
           }
         },
@@ -179,11 +198,11 @@ export function screenPlugin(options: ScreenPluginOptions = {}): Plugin {
         isCursorVisible: () => cursorVisible,
 
         clear: () => {
-          process.stdout.write(clearScreen())
+          safeWrite(clearScreen())
         },
 
         bell: () => {
-          process.stdout.write(terminalBell())
+          safeWrite(terminalBell())
         },
 
         getSize: () => getTerminalSize(),
@@ -192,31 +211,35 @@ export function screenPlugin(options: ScreenPluginOptions = {}): Plugin {
 
         enterAltScreen: () => {
           if (!inAltScreen) {
-            process.stdout.write(enterAltScreen())
+            safeWrite(enterAltScreen())
             inAltScreen = true
           }
         },
 
         exitAltScreen: () => {
           if (inAltScreen) {
-            process.stdout.write(exitAltScreen())
+            safeWrite(exitAltScreen())
             inAltScreen = false
           }
         }
       }
 
       // Handle resize events
-      process.stdout.on('resize', () => {
+      resizeListener = () => {
         const { width, height } = getTerminalSize()
         if (debug) {
           console.error(`[screen] resize: ${width}x${height}`)
         }
-      })
+      }
+      process.stdout.on('resize', resizeListener)
 
       if (debug) {
         const size = getTerminalSize()
         console.error(`[screen] plugin installed (${size.width}x${size.height})`)
       }
+
+      // Store listener for cleanup in destroy
+      ;(tuiApp as any)._screenResizeListener = resizeListener
     },
 
     onResize(width: number, height: number): void {
@@ -226,27 +249,45 @@ export function screenPlugin(options: ScreenPluginOptions = {}): Plugin {
     },
 
     destroy(): void {
+      // Clean up resize listener
+      const resizeListener = (this as any)._screenResizeListener
+      if (resizeListener) {
+        process.stdout.removeListener('resize', resizeListener)
+        ;(this as any)._screenResizeListener = null
+      }
+
       if (restoreOnExit) {
+        // Safe stdout write helper
+        const safeWrite = (data: string): void => {
+          try {
+            process.stdout.write(data)
+          } catch (err) {
+            if (debug) {
+              console.error('[screen] stdout write error during destroy:', err)
+            }
+          }
+        }
+
         // Disable bracketed paste
         if (bracketedPaste) {
-          process.stdout.write(disableBracketedPaste())
+          safeWrite(disableBracketedPaste())
         }
 
         // Show cursor
         if (!cursorVisible) {
-          process.stdout.write(showCursor())
+          safeWrite(showCursor())
           cursorVisible = true
         }
 
         // Exit alternate screen
         if (inAltScreen) {
-          process.stdout.write(exitAltScreen())
+          safeWrite(exitAltScreen())
           inAltScreen = false
         }
 
         // Clear any custom title
         if (currentTitle) {
-          process.stdout.write(setTerminalTitle(''))
+          safeWrite(setTerminalTitle(''))
         }
       }
 
@@ -262,7 +303,14 @@ export function screenPlugin(options: ScreenPluginOptions = {}): Plugin {
  */
 export function onResize(callback: (width: number, height: number) => void): () => void {
   const handler = () => {
-    callback(process.stdout.columns ?? 80, process.stdout.rows ?? 24)
+    const cols = process.stdout.columns
+    const rows = process.stdout.rows
+
+    // Validate and clamp values
+    const width = Number.isFinite(cols) && cols > 0 ? Math.min(cols, 10000) : 80
+    const height = Number.isFinite(rows) && rows > 0 ? Math.min(rows, 10000) : 24
+
+    callback(width, height)
   }
 
   process.stdout.on('resize', handler)

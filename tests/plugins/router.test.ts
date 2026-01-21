@@ -710,3 +710,453 @@ describe('defineRoutes', () => {
     expect(routes.map(r => r.path)).toEqual(['/', '/about', '/contact'])
   })
 })
+
+describe('router edge cases and error handling', () => {
+  let app: TUIApp & { router?: RouterPluginAPI }
+
+  beforeEach(() => {
+    app = createMockApp()
+  })
+
+  describe('component error handling', () => {
+    it('should handle component creation errors gracefully', async () => {
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      const errorComponent = vi.fn(() => {
+        throw new Error('Component error')
+      })
+
+      const plugin = routerPlugin({
+        routes: [
+          { path: '/', component: () => createMockNode() },
+          { path: '/error', component: errorComponent }
+        ],
+        debug: true
+      })
+      plugin.install(app)
+
+      const result = await app.router!.push('/error')
+
+      expect(result).toBe(false)
+      expect(consoleErrorSpy).toHaveBeenCalled()
+
+      consoleErrorSpy.mockRestore()
+    })
+
+    it('should handle component errors with try-catch', async () => {
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      const errorComponent = vi.fn(() => {
+        throw new Error('Component error')
+      })
+
+      const plugin = routerPlugin({
+        routes: [
+          { path: '/', component: () => createMockNode() },
+          { path: '/error', component: errorComponent }
+        ],
+        debug: true
+      })
+      plugin.install(app)
+
+      await app.router!.push('/error')
+      // Navigation should fail
+      expect(app.router!.current().path).toBe('/')
+
+      consoleErrorSpy.mockRestore()
+    })
+  })
+
+  describe('guard error handling', () => {
+    it('should handle guard errors gracefully', async () => {
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      const plugin = routerPlugin({
+        routes: [
+          { path: '/', component: () => createMockNode() },
+          { path: '/about', component: () => createMockNode() }
+        ],
+        debug: true
+      })
+      plugin.install(app)
+
+      app.router!.beforeEach(() => {
+        throw new Error('Guard error')
+      })
+
+      const result = await app.router!.push('/about')
+
+      expect(result).toBe(false)
+      expect(consoleErrorSpy).toHaveBeenCalled()
+
+      consoleErrorSpy.mockRestore()
+    })
+
+    it('should handle route-specific guard errors', async () => {
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      const plugin = routerPlugin({
+        routes: [
+          {
+            path: '/guarded',
+            component: () => createMockNode(),
+            beforeEnter: () => {
+              throw new Error('Route guard error')
+            }
+          }
+        ],
+        debug: true
+      })
+      plugin.install(app)
+
+      const result = await app.router!.push('/guarded')
+
+      expect(result).toBe(false)
+      expect(consoleErrorSpy).toHaveBeenCalled()
+
+      consoleErrorSpy.mockRestore()
+    })
+  })
+
+  describe('after hook error handling', () => {
+    it('should handle after hook errors gracefully', async () => {
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      const plugin = routerPlugin({
+        routes: [
+          { path: '/', component: () => createMockNode() },
+          { path: '/about', component: () => createMockNode() }
+        ],
+        debug: true
+      })
+      plugin.install(app)
+
+      app.router!.afterEach(() => {
+        throw new Error('After hook error')
+      })
+
+      // Should still complete navigation
+      const result = await app.router!.push('/about')
+
+      expect(result).toBe(true)
+      expect(consoleErrorSpy).toHaveBeenCalled()
+
+      consoleErrorSpy.mockRestore()
+    })
+
+    it('should continue after hook errors', async () => {
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      const handler1 = vi.fn(() => {
+        throw new Error('Error 1')
+      })
+      const handler2 = vi.fn()
+
+      const plugin = routerPlugin({
+        routes: [
+          { path: '/', component: () => createMockNode() },
+          { path: '/about', component: () => createMockNode() }
+        ],
+        debug: true
+      })
+      plugin.install(app)
+
+      app.router!.afterEach(handler1)
+      app.router!.afterEach(handler2)
+
+      await app.router!.push('/about')
+
+      // Both handlers should be called
+      expect(handler1).toHaveBeenCalled()
+      expect(handler2).toHaveBeenCalled()
+      expect(consoleErrorSpy).toHaveBeenCalled()
+
+      consoleErrorSpy.mockRestore()
+    })
+  })
+
+  describe('redirect loop prevention', () => {
+    it('should prevent excessive redirects', async () => {
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      let redirectCount = 0
+      const plugin = routerPlugin({
+        routes: [
+          { path: '/a', component: () => createMockNode() },
+          { path: '/b', component: () => createMockNode() }
+        ],
+        debug: true
+      })
+      plugin.install(app)
+
+      // Create redirect loop: a -> b -> a -> b...
+      app.router!.beforeEach((to, from, next) => {
+        if (to.path === '/a') {
+          redirectCount++
+          if (redirectCount < 100) {
+            next('/b')
+          } else {
+            next()
+          }
+        } else if (to.path === '/b') {
+          next('/a')
+        } else {
+          next()
+        }
+      })
+
+      const result = await app.router!.push('/a')
+
+      // Should detect redirect loop and abort
+      expect(result).toBe(false)
+      expect(consoleErrorSpy).toHaveBeenCalled()
+
+      consoleErrorSpy.mockRestore()
+    })
+  })
+
+  describe('query parameters', () => {
+    it('should parse query parameters', async () => {
+      const component = vi.fn(() => createMockNode())
+
+      const plugin = routerPlugin({
+        routes: [
+          { path: '/search', component }
+        ]
+      })
+      plugin.install(app)
+
+      await app.router!.push('/search', { q: 'test', page: 1 })
+
+      expect(component).toHaveBeenCalled()
+      const query = component.mock.calls[0][1]
+      expect(query.q).toBe('test')
+      expect(query.page).toBe(1)
+    })
+
+    it('should handle undefined query values', async () => {
+      const component = vi.fn(() => createMockNode())
+
+      const plugin = routerPlugin({
+        routes: [
+          { path: '/test', component }
+        ]
+      })
+      plugin.install(app)
+
+      await app.router!.push('/test', { a: 'value', b: undefined })
+
+      expect(component).toHaveBeenCalled()
+      const query = component.mock.calls[0][1]
+      expect(query.a).toBe('value')
+      expect(query.b).toBeUndefined()
+    })
+  })
+
+  describe('wildcard routes', () => {
+    it('should match wildcard patterns', async () => {
+      const component = vi.fn(() => createMockNode())
+
+      const plugin = routerPlugin({
+        routes: [
+          { path: '/files/*', component }
+        ]
+      })
+      plugin.install(app)
+
+      await app.router!.push('/files/path/to/file.txt')
+
+      expect(component).toHaveBeenCalled()
+      expect(app.router!.current().path).toBe('/files/path/to/file.txt')
+    })
+
+    it('should match wildcard at root', async () => {
+      const component = vi.fn(() => createMockNode())
+
+      const plugin = routerPlugin({
+        routes: [
+          { path: '*', component }
+        ]
+      })
+      plugin.install(app)
+
+      await app.router!.push('/any/path/here')
+
+      expect(component).toHaveBeenCalled()
+    })
+  })
+
+  describe('named routes with params and query', () => {
+    it('should handle named routes with params and query', async () => {
+      const component = vi.fn(() => createMockNode())
+
+      const plugin = routerPlugin({
+        routes: [
+          { path: '/users/:id/posts/:postId', name: 'post', component }
+        ]
+      })
+      plugin.install(app)
+
+      await app.router!.pushNamed('post', { id: '123', postId: '456' }, { tab: 'comments' })
+
+      expect(component).toHaveBeenCalled()
+      const params = component.mock.calls[0][0]
+      const query = component.mock.calls[0][1]
+      // Route params are parsed as numbers when numeric
+      expect(params.id).toBe(123)
+      expect(params.postId).toBe(456)
+      expect(query.tab).toBe('comments')
+    })
+
+    it('should return false for named route with missing params', async () => {
+      const plugin = routerPlugin({
+        routes: [
+          { path: '/users/:id/posts/:postId', name: 'post', component: () => createMockNode() }
+        ]
+      })
+      plugin.install(app)
+
+      // Missing postId
+      const result = await app.router!.pushNamed('post', { id: '123' })
+
+      expect(result).toBe(false)
+    })
+  })
+
+  describe('special parameter types', () => {
+    it('should handle numeric parameters', async () => {
+      const component = vi.fn(() => createMockNode())
+
+      const plugin = routerPlugin({
+        routes: [
+          { path: '/items/:id', component }
+        ]
+      })
+      plugin.install(app)
+
+      await app.router!.push('/items/42')
+
+      const params = component.mock.calls[0][0]
+      expect(params.id).toBe(42)
+    })
+
+    it('should handle boolean parameters', async () => {
+      const component = vi.fn(() => createMockNode())
+
+      const plugin = routerPlugin({
+        routes: [
+          { path: '/toggle/:enabled', component }
+        ]
+      })
+      plugin.install(app)
+
+      await app.router!.push('/toggle/true')
+
+      const params = component.mock.calls[0][0]
+      expect(params.enabled).toBe('true')
+    })
+  })
+
+  describe('history edge cases', () => {
+    it('should handle back when already at start', async () => {
+      const plugin = routerPlugin({
+        routes: [
+          { path: '/', component: () => createMockNode() }
+        ],
+        defaultRoute: '/'
+      })
+      plugin.install(app)
+
+      const result = await app.router!.back()
+
+      expect(result).toBe(false)
+    })
+
+    it('should handle forward when already at end', async () => {
+      const plugin = routerPlugin({
+        routes: [
+          { path: '/', component: () => createMockNode() }
+        ],
+        defaultRoute: '/'
+      })
+      plugin.install(app)
+
+      const result = await app.router!.forward()
+
+      expect(result).toBe(false)
+    })
+
+    it('should handle go with out of bounds delta', async () => {
+      const plugin = routerPlugin({
+        routes: [
+          { path: '/', component: () => createMockNode() }
+        ],
+        defaultRoute: '/'
+      })
+      plugin.install(app)
+
+      const result1 = await app.router!.go(-10)
+      const result2 = await app.router!.go(10)
+
+      expect(result1).toBe(false)
+      expect(result2).toBe(false)
+    })
+  })
+
+  describe('maxHistorySize', () => {
+    it('should respect custom maxHistorySize', async () => {
+      const plugin = routerPlugin({
+        routes: [
+          { path: '/', component: () => createMockNode() },
+          { path: '/a', component: () => createMockNode() },
+          { path: '/b', component: () => createMockNode() },
+          { path: '/c', component: () => createMockNode() }
+        ],
+        maxHistorySize: 2
+      })
+      plugin.install(app)
+
+      await app.router!.push('/a')
+      await app.router!.push('/b')
+      await app.router!.push('/c')
+
+      // History should be limited to 2 entries
+      const history = app.router!.getHistory()
+      expect(history.length).toBeLessThanOrEqual(2)
+    })
+  })
+
+  describe('resolve method', () => {
+    it('should resolve with query parameters', async () => {
+      const plugin = routerPlugin({
+        routes: [
+          { path: '/search', name: 'search', component: () => createMockNode() }
+        ]
+      })
+      plugin.install(app)
+
+      const resolved = app.router!.resolve('/search', { q: 'test', sort: 'desc' })
+
+      expect(resolved.path).toBe('/search')
+      expect(resolved.query.q).toBe('test')
+      expect(resolved.query.sort).toBe('desc')
+      expect(resolved.name).toBe('search')
+    })
+
+    it('should resolve unmatched routes', async () => {
+      const plugin = routerPlugin({
+        routes: [
+          { path: '/exists', component: () => createMockNode() }
+        ]
+      })
+      plugin.install(app)
+
+      const resolved = app.router!.resolve('/does-not-exist')
+
+      expect(resolved.path).toBe('/does-not-exist')
+      expect(resolved.matched).toBeNull()
+      expect(resolved.params).toEqual({})
+      expect(resolved.query).toEqual({})
+    })
+  })
+})

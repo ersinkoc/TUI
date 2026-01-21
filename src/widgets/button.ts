@@ -63,6 +63,12 @@ export interface ButtonNode extends Node {
   onFocus(handler: () => void): this
   onBlur(handler: () => void): this
 
+  // Handler cleanup - prevent memory leaks
+  offClick(handler: () => void): this
+  offFocus(handler: () => void): this
+  offBlur(handler: () => void): this
+  clearHandlers(): this
+
   // Focus control
   focus(): this
   blur(): this
@@ -181,6 +187,38 @@ class ButtonNodeImpl extends LeafNode implements ButtonNode {
     return this
   }
 
+  // Handler cleanup methods - prevent memory leaks
+  offClick(handler: () => void): this {
+    const index = this._onClickHandlers.indexOf(handler)
+    if (index > -1) {
+      this._onClickHandlers.splice(index, 1)
+    }
+    return this
+  }
+
+  offFocus(handler: () => void): this {
+    const index = this._onFocusHandlers.indexOf(handler)
+    if (index > -1) {
+      this._onFocusHandlers.splice(index, 1)
+    }
+    return this
+  }
+
+  offBlur(handler: () => void): this {
+    const index = this._onBlurHandlers.indexOf(handler)
+    if (index > -1) {
+      this._onBlurHandlers.splice(index, 1)
+    }
+    return this
+  }
+
+  clearHandlers(): this {
+    this._onClickHandlers = []
+    this._onFocusHandlers = []
+    this._onBlurHandlers = []
+    return this
+  }
+
   /**
    * Dispose of button and clear all handlers.
    */
@@ -220,9 +258,14 @@ class ButtonNodeImpl extends LeafNode implements ButtonNode {
       this._pressed = true
       this.markDirty()
       // Reset pressed state after a short delay
+      // Store a reference to check disposal status in timeout
+      const self = this
       setTimeout(() => {
-        this._pressed = false
-        this.markDirty()
+        // Only update if not disposed
+        if (!self._disposed) {
+          self._pressed = false
+          self.markDirty()
+        }
       }, 100)
       for (const handler of this._onClickHandlers) {
         handler()

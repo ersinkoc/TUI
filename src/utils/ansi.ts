@@ -33,6 +33,9 @@ import {
  * ```
  */
 export function cursorTo(x: number, y: number): string {
+  if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0) {
+    return '' // Return empty string for invalid input
+  }
   return `${CSI}${y + 1};${x + 1}H`
 }
 
@@ -214,9 +217,13 @@ export function bgDefault(): string {
  * @returns ANSI escape sequence
  */
 export function packedToFgAnsi(packed: number): string {
-  const r = (packed >> 24) & 0xff
-  const g = (packed >> 16) & 0xff
-  const b = (packed >> 8) & 0xff
+  if (!Number.isFinite(packed)) {
+    return fgDefault()
+  }
+  // Use unsigned right shift (>>>) to handle large packed colors correctly
+  const r = (packed >>> 24) & 0xff
+  const g = (packed >>> 16) & 0xff
+  const b = (packed >>> 8) & 0xff
   return fgRgb(r, g, b)
 }
 
@@ -226,9 +233,13 @@ export function packedToFgAnsi(packed: number): string {
  * @returns ANSI escape sequence
  */
 export function packedToBgAnsi(packed: number): string {
-  const r = (packed >> 24) & 0xff
-  const g = (packed >> 16) & 0xff
-  const b = (packed >> 8) & 0xff
+  if (!Number.isFinite(packed)) {
+    return bgDefault()
+  }
+  // Use unsigned right shift (>>>) to handle large packed colors correctly
+  const r = (packed >>> 24) & 0xff
+  const g = (packed >>> 16) & 0xff
+  const b = (packed >>> 8) & 0xff
   const a = packed & 0xff
 
   // Transparent background
@@ -305,6 +316,10 @@ export function strikethrough(): string {
  * @returns ANSI escape sequence
  */
 export function attrsToAnsi(attrs: number): string {
+  if (!Number.isFinite(attrs) || attrs === 0) {
+    return ''
+  }
+
   const codes: number[] = []
 
   if (attrs & 0x01) codes.push(1) // Bold
@@ -471,26 +486,27 @@ export function disableBracketedPaste(): string {
 /**
  * Regex patterns for dangerous ANSI sequences.
  * These can be used for terminal injection attacks.
+ * Note: Using non-global regexes to avoid state persistence issues
  */
 const DANGEROUS_ANSI_PATTERNS = [
   // Operating System Commands (OSC) - can change terminal title, set clipboard, etc.
-  /\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g,
+  /\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/,
   // Device Control Strings (DCS) - can download fonts, send data to devices
-  /\x1bP[^\x1b]*\x1b\\/g,
+  /\x1bP[^\x1b]*\x1b\\/,
   // Application Program Commands (APC) - application-specific commands
-  /\x1b_[^\x1b]*\x1b\\/g,
+  /\x1b_[^\x1b]*\x1b\\/,
   // Start of String (SOS) - string termination
-  /\x1bX[^\x1b]*\x1b\\/g,
+  /\x1bX[^\x1b]*\x1b\\/,
   // Privacy Message (PM) - privacy-related commands
-  /\x1b\^[^\x1b]*\x1b\\/g,
+  /\x1b\^[^\x1b]*\x1b\\/,
   // Single Character Introducer (SCI) - legacy terminal commands
-  /\x1bZ/g,
+  /\x1bZ/,
   // Reset to Initial State (RIS) - can reset terminal completely
-  /\x1bc/g,
+  /\x1bc/,
   // Clear screen and move to home (could be used to hide previous output)
-  /\x1b\[2J\x1b\[H/g,
+  /\x1b\[2J\x1b\[H/,
   // Window manipulation sequences
-  /\x1b\[\d*;\d*;\d*t/g
+  /\x1b\[\d*;\d*;\d*t/
 ]
 
 /**

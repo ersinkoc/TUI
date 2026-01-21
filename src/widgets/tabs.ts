@@ -49,6 +49,12 @@ export interface TabsNode extends Node {
   onFocus(handler: () => void): this
   onBlur(handler: () => void): this
 
+  // Handler cleanup - prevent memory leaks
+  offChange(handler: (tab: TabItem, index: number) => void): this
+  offFocus(handler: () => void): this
+  offBlur(handler: () => void): this
+  clearHandlers(): this
+
   // Focus control
   focus(): this
   blur(): this
@@ -172,9 +178,41 @@ class TabsNodeImpl extends ContainerNode implements TabsNode {
     return this
   }
 
+  // Handler cleanup methods - prevent memory leaks
+  offChange(handler: (tab: TabItem, index: number) => void): this {
+    const index = this._onChangeHandlers.indexOf(handler)
+    if (index > -1) {
+      this._onChangeHandlers.splice(index, 1)
+    }
+    return this
+  }
+
+  offFocus(handler: () => void): this {
+    const index = this._onFocusHandlers.indexOf(handler)
+    if (index > -1) {
+      this._onFocusHandlers.splice(index, 1)
+    }
+    return this
+  }
+
+  offBlur(handler: () => void): this {
+    const index = this._onBlurHandlers.indexOf(handler)
+    if (index > -1) {
+      this._onBlurHandlers.splice(index, 1)
+    }
+    return this
+  }
+
+  clearHandlers(): this {
+    this._onChangeHandlers = []
+    this._onFocusHandlers = []
+    this._onBlurHandlers = []
+    return this
+  }
+
   // Focus control
   focus(): this {
-    if (!this._focused) {
+    if (!this._focused && !this._disposed) {
       this._focused = true
       this.markDirty()
       for (const handler of this._onFocusHandlers) {
@@ -217,12 +255,18 @@ class TabsNodeImpl extends ContainerNode implements TabsNode {
   /** @internal */
   selectPrevious(): void {
     if (this._selectedIndex > 0) {
-      // Skip disabled tabs
+      // Skip disabled tabs with iteration limit to prevent infinite loop
       let newIndex = this._selectedIndex - 1
-      while (newIndex > 0 && this._tabs[newIndex]?.disabled) {
+      const maxIterations = this._tabs.length
+      let iterations = 0
+
+      while (newIndex >= 0 && this._tabs[newIndex]?.disabled && iterations < maxIterations) {
         newIndex--
+        iterations++
       }
-      if (!this._tabs[newIndex]?.disabled) {
+
+      // Ensure bounds and not disabled
+      if (newIndex >= 0 && newIndex < this._tabs.length && !this._tabs[newIndex]?.disabled) {
         this._selectedIndex = newIndex
         this.markDirty()
         this.emitChange()
@@ -233,12 +277,18 @@ class TabsNodeImpl extends ContainerNode implements TabsNode {
   /** @internal */
   selectNext(): void {
     if (this._selectedIndex < this._tabs.length - 1) {
-      // Skip disabled tabs
+      // Skip disabled tabs with iteration limit to prevent infinite loop
       let newIndex = this._selectedIndex + 1
-      while (newIndex < this._tabs.length - 1 && this._tabs[newIndex]?.disabled) {
+      const maxIterations = this._tabs.length
+      let iterations = 0
+
+      while (newIndex < this._tabs.length && this._tabs[newIndex]?.disabled && iterations < maxIterations) {
         newIndex++
+        iterations++
       }
-      if (!this._tabs[newIndex]?.disabled) {
+
+      // Ensure bounds and not disabled
+      if (newIndex >= 0 && newIndex < this._tabs.length && !this._tabs[newIndex]?.disabled) {
         this._selectedIndex = newIndex
         this.markDirty()
         this.emitChange()

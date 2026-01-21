@@ -85,6 +85,12 @@ export function createRenderer(stdout: NodeJS.WriteStream, options: RendererOpti
   function snapshotBuffer(buffer: Buffer): void {
     const w = buffer.width
     const h = buffer.height
+
+    // Validate dimensions to prevent memory issues
+    if (w <= 0 || h <= 0 || w > 10000 || h > 10000) {
+      return
+    }
+
     const size = w * h
 
     // Reallocate only if dimensions changed
@@ -107,6 +113,12 @@ export function createRenderer(stdout: NodeJS.WriteStream, options: RendererOpti
         dst.fg = src.fg
         dst.bg = src.bg
         dst.attrs = src.attrs
+      } else {
+        // Reset to empty if source is null/undefined
+        dst.char = ' '
+        dst.fg = 0
+        dst.bg = 0
+        dst.attrs = 0
       }
     }
   }
@@ -248,6 +260,12 @@ export function createBatchedRenderer(stdout: NodeJS.WriteStream, options: Rende
   function snapshotBuffer(buffer: Buffer): void {
     const w = buffer.width
     const h = buffer.height
+
+    // Validate dimensions to prevent memory issues
+    if (w <= 0 || h <= 0 || w > 10000 || h > 10000) {
+      return
+    }
+
     const size = w * h
 
     if (snapshotWidth !== w || snapshotHeight !== h || snapshotCells === null) {
@@ -268,6 +286,12 @@ export function createBatchedRenderer(stdout: NodeJS.WriteStream, options: Rende
         dst.fg = src.fg
         dst.bg = src.bg
         dst.attrs = src.attrs
+      } else {
+        // Reset to empty if source is null/undefined
+        dst.char = ' '
+        dst.fg = 0
+        dst.bg = 0
+        dst.attrs = 0
       }
     }
   }

@@ -72,6 +72,12 @@ export interface SliderNode extends Node {
   onFocus(handler: () => void): this
   onBlur(handler: () => void): this
 
+  // Handler cleanup - prevent memory leaks
+  offChange(handler: (value: number) => void): this
+  offFocus(handler: () => void): this
+  offBlur(handler: () => void): this
+  clearHandlers(): this
+
   // State
   readonly currentValue: number
   readonly percent: number
@@ -155,14 +161,26 @@ class SliderNodeImpl extends LeafNode implements SliderNode {
 
   // Configuration
   min(value: number): this {
-    this._min = value
+    // Validate input is a finite number
+    const validatedMin = isFinite(value) ? value : 0
+    // If new min would be greater than max, adjust max to maintain valid range
+    if (validatedMin > this._max) {
+      this._max = validatedMin
+    }
+    this._min = validatedMin
     this._value = this.clampValue(this._value)
     this.markDirty()
     return this
   }
 
   max(value: number): this {
-    this._max = value
+    // Validate input is a finite number
+    const validatedMax = isFinite(value) ? value : 100
+    // If new max would be less than min, adjust min to maintain valid range
+    if (validatedMax < this._min) {
+      this._min = validatedMax
+    }
+    this._max = validatedMax
     this._value = this.clampValue(this._value)
     this.markDirty()
     return this
@@ -255,7 +273,7 @@ class SliderNodeImpl extends LeafNode implements SliderNode {
 
   focus(): this {
     if (this._disabled) return this
-    if (!this._focused) {
+    if (!this._focused && !this._disposed) {
       this._focused = true
       this.markDirty()
       for (const handler of this._onFocusHandlers) {
@@ -289,6 +307,38 @@ class SliderNodeImpl extends LeafNode implements SliderNode {
 
   onBlur(handler: () => void): this {
     this._onBlurHandlers.push(handler)
+    return this
+  }
+
+  // Handler cleanup methods - prevent memory leaks
+  offChange(handler: (value: number) => void): this {
+    const index = this._onChangeHandlers.indexOf(handler)
+    if (index > -1) {
+      this._onChangeHandlers.splice(index, 1)
+    }
+    return this
+  }
+
+  offFocus(handler: () => void): this {
+    const index = this._onFocusHandlers.indexOf(handler)
+    if (index > -1) {
+      this._onFocusHandlers.splice(index, 1)
+    }
+    return this
+  }
+
+  offBlur(handler: () => void): this {
+    const index = this._onBlurHandlers.indexOf(handler)
+    if (index > -1) {
+      this._onBlurHandlers.splice(index, 1)
+    }
+    return this
+  }
+
+  clearHandlers(): this {
+    this._onChangeHandlers = []
+    this._onFocusHandlers = []
+    this._onBlurHandlers = []
     return this
   }
 
@@ -356,15 +406,21 @@ class SliderNodeImpl extends LeafNode implements SliderNode {
       if (this._orientation === 'horizontal') {
         const trackStart = this._showRange ? 4 : 0
         const trackWidth = width - (this._showRange ? 8 : 0) - (this._showValue ? 6 : 0)
-        const relX = x - bx - trackStart
-        const percent = Math.max(0, Math.min(1, relX / trackWidth))
-        this.setPercent(percent)
+        // Prevent division by zero
+        if (trackWidth > 0) {
+          const relX = x - bx - trackStart
+          const percent = Math.max(0, Math.min(1, relX / trackWidth))
+          this.setPercent(percent)
+        }
       } else {
         const trackStart = this._showRange ? 1 : 0
         const trackHeight = height - (this._showRange ? 2 : 0)
-        const relY = y - by - trackStart
-        const percent = 1 - Math.max(0, Math.min(1, relY / trackHeight))
-        this.setPercent(percent)
+        // Prevent division by zero
+        if (trackHeight > 0) {
+          const relY = y - by - trackStart
+          const percent = 1 - Math.max(0, Math.min(1, relY / trackHeight))
+          this.setPercent(percent)
+        }
       }
       return true
     }

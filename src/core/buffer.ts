@@ -6,6 +6,7 @@
 import type { Buffer, Cell, CellStyle } from '../types'
 import { DEFAULT_FG, DEFAULT_BG, EMPTY_CHAR } from '../constants'
 import { getCharWidth } from '../utils/unicode'
+import { sanitizeAnsi } from '../utils/ansi'
 
 // ============================================================
 // Buffer Implementation
@@ -61,16 +62,24 @@ export function createBuffer(width: number, height: number): Buffer {
         return
       }
 
+      // Sanitize input to prevent ANSI injection attacks
+      text = sanitizeAnsi(text)
+
       const fg = style.fg ?? DEFAULT_FG
       const bg = style.bg ?? DEFAULT_BG
       const attrs = style.attrs ?? 0
 
       let col = x
       for (const char of text) {
-        // Stop if we're past the buffer width
+        // Skip if starting position is beyond buffer
         if (col >= w) break
 
         const charWidth = getCharWidth(char)
+
+        // Skip zero-width characters (combining marks, control chars)
+        if (charWidth === 0) {
+          continue
+        }
 
         // Skip characters that are completely off-screen (left side)
         if (col + charWidth <= 0) {
@@ -78,50 +87,38 @@ export function createBuffer(width: number, height: number): Buffer {
           continue
         }
 
-        // Handle wide character that starts off-screen but extends into view
-        // In this case, we show a placeholder space instead of the partial character
+        // Clamp starting position to buffer bounds
+        const writeCol = Math.max(0, col)
+
+        // If wide character starts off-screen but extends into view, show space
         if (col < 0 && charWidth === 2) {
-          // The first half is off-screen, show space at position 0
           cells[y * w] = { char: ' ', fg, bg, attrs }
           col += charWidth
           continue
         }
 
-        // Only write if within bounds
-        if (col >= 0) {
-          // Check if we're overwriting a wide character's continuation cell
-          // If so, clear the original wide character
-          const existingCell = cells[y * w + col]
-          if (existingCell && existingCell.char === '' && col > 0) {
-            // This is a continuation cell, clear the character to its left
-            cells[y * w + col - 1] = { char: ' ', fg: cells[y * w + col - 1]?.fg ?? fg, bg: cells[y * w + col - 1]?.bg ?? bg, attrs: 0 }
-          }
+        // Check if we're past the buffer width
+        if (writeCol >= w) {
+          break
+        }
 
-          // Handle wide character that would be cut off at the right edge
-          if (charWidth === 2 && col + 1 >= w) {
-            // Wide character doesn't fit, show a space instead
-            cells[y * w + col] = { char: ' ', fg, bg, attrs }
-            col += charWidth
-            continue
-          }
+        // Clear any wide character that would be partially overwritten
+        clearWideCharacterAt(y * w + writeCol, cells, w, y, h, fg, bg)
 
-          // Write the character
-          cells[y * w + col] = { char, fg, bg, attrs }
+        // Handle wide character that would be cut off at the right edge
+        if (charWidth === 2 && writeCol + 1 >= w) {
+          // Wide character doesn't fit, show a space instead
+          cells[y * w + writeCol] = { char: ' ', fg, bg, attrs }
+          col += charWidth
+          continue
+        }
 
-          // For wide characters, fill next cell with empty space marker
-          if (charWidth === 2 && col + 1 < w) {
-            // Check if we're overwriting another wide character's continuation
-            const nextExisting = cells[y * w + col + 1]
-            if (nextExisting && nextExisting.char === '' && col + 2 < w) {
-              // Clear the next wide character too
-              const afterNext = cells[y * w + col + 2]
-              if (afterNext) {
-                cells[y * w + col + 2] = { char: ' ', fg: afterNext.fg, bg: afterNext.bg, attrs: 0 }
-              }
-            }
+        // Write the character
+        cells[y * w + writeCol] = { char, fg, bg, attrs }
 
-            cells[y * w + col + 1] = { char: '', fg, bg, attrs }
-          }
+        // For wide characters, fill next cell with continuation marker
+        if (charWidth === 2 && writeCol + 1 < w) {
+          cells[y * w + writeCol + 1] = { char: '', fg, bg, attrs }
         }
 
         col += charWidth
@@ -155,15 +152,18 @@ export function createBuffer(width: number, height: number): Buffer {
 
       const newCells = createEmptyCells(nw, nh)
 
-      // Copy existing content
+      // Copy existing content with bounds checking
       const copyW = Math.min(w, nw)
       const copyH = Math.min(h, nh)
 
       for (let row = 0; row < copyH; row++) {
         for (let col = 0; col < copyW; col++) {
-          const oldCell = cells[row * w + col]
-          if (oldCell) {
-            newCells[row * nw + col] = oldCell
+          const idx = row * w + col
+          if (idx >= 0 && idx < cells.length) {
+            const oldCell = cells[idx]
+            if (oldCell) {
+              newCells[row * nw + col] = oldCell
+            }
           }
         }
       }
@@ -171,6 +171,78 @@ export function createBuffer(width: number, height: number): Buffer {
       cells = newCells
       w = nw
       h = nh
+    }
+  }
+}
+
+/**
+ * Clear a wide character at the given position.
+ * Handles the continuation cell properly.
+ *
+ * @param index - Cell index
+ * @param cells - Cells array
+ * @param width - Buffer width
+ * @param y - Row
+ * @param height - Buffer height
+ * @param defaultFg - Default foreground color
+ * @param defaultBg - Default background color
+ */
+function clearWideCharacterAt(
+  index: number,
+  cells: Cell[],
+  width: number,
+  y: number,
+  height: number,
+  defaultFg: number,
+  defaultBg: number
+): void {
+  if (index < 0 || index >= cells.length) return
+
+  const cell = cells[index]
+  if (!cell) return
+
+  // Check if this is a continuation cell (empty char)
+  if (cell.char === '') {
+    // This is the right half of a wide character
+    // Clear the left half (the actual character)
+    if (index > 0) {
+      const leftIndex = index - 1
+      const leftCell = cells[leftIndex]
+      if (leftCell) {
+        // Check if left cell is also a continuation of another wide char
+        if (leftCell.char === '' && leftIndex > 0) {
+          cells[leftIndex - 1] = {
+            char: ' ',
+            fg: leftCell.fg,
+            bg: leftCell.bg,
+            attrs: 0
+          }
+        }
+        cells[leftIndex] = { char: ' ', fg: leftCell.fg, bg: leftCell.bg, attrs: 0 }
+      }
+    }
+  } else {
+    // Check if this is the left half of a wide character
+    const charWidth = getCharWidth(cell.char)
+    if (charWidth === 2 && index + 1 < cells.length) {
+      // Clear the continuation cell
+      const rightIndex = index + 1
+      const rightCell = cells[rightIndex]
+      if (rightCell && rightCell.char === '') {
+        // Check if the continuation cell is part of another wide char
+        if (rightIndex + 1 < cells.length) {
+          const afterRight = cells[rightIndex + 1]
+          if (afterRight && afterRight.char === '') {
+            cells[rightIndex + 1] = {
+              char: ' ',
+              fg: afterRight.fg,
+              bg: afterRight.bg,
+              attrs: 0
+            }
+          }
+        }
+        cells[rightIndex] = { char: ' ', fg: defaultFg, bg: defaultBg, attrs: 0 }
+      }
     }
   }
 }
@@ -184,6 +256,13 @@ export function createBuffer(width: number, height: number): Buffer {
  */
 function createEmptyCells(width: number, height: number): Cell[] {
   const size = width * height
+
+  // Validate size to prevent memory issues
+  if (size <= 0 || size > 1000000) {
+    // Max 1M cells (1000x1000) to prevent OOM
+    throw new Error(`Invalid buffer size: ${width}x${height}`)
+  }
+
   const cells: Cell[] = new Array(size)
 
   for (let i = 0; i < size; i++) {
@@ -275,16 +354,23 @@ export function copyRegion(
  * Fill buffer with a character.
  *
  * @param buffer - Buffer to fill
- * @param char - Character to fill with
- * @param style - Style for the character
+ * @param charOrCell - Character to fill with, or a full cell object
+ * @param style - Style for the character (when charOrCell is a string)
  */
-export function fillBuffer(buffer: Buffer, char: string, style: CellStyle = {}): void {
-  const cell: Cell = {
-    char,
-    fg: style.fg ?? DEFAULT_FG,
-    bg: style.bg ?? DEFAULT_BG,
-    attrs: style.attrs ?? 0
-  }
+export function fillBuffer(buffer: Buffer, charOrCell: string | Cell, style: CellStyle = {}): void {
+  const cell: Cell = typeof charOrCell === 'string'
+    ? {
+        char: charOrCell,
+        fg: style.fg ?? DEFAULT_FG,
+        bg: style.bg ?? DEFAULT_BG,
+        attrs: style.attrs ?? 0
+      }
+    : {
+        char: charOrCell.char,
+        fg: charOrCell.fg ?? DEFAULT_FG,
+        bg: charOrCell.bg ?? DEFAULT_BG,
+        attrs: charOrCell.attrs ?? 0
+      }
 
   buffer.fill(0, 0, buffer.width, buffer.height, cell)
 }

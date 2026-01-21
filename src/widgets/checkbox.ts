@@ -43,6 +43,12 @@ export interface CheckboxNode extends Node {
   onFocus(handler: () => void): this
   onBlur(handler: () => void): this
 
+  // Handler cleanup - prevent memory leaks
+  offChange(handler: (checked: boolean) => void): this
+  offFocus(handler: () => void): this
+  offBlur(handler: () => void): this
+  clearHandlers(): this
+
   // Focus control
   focus(): this
   blur(): this
@@ -137,9 +143,41 @@ class CheckboxNodeImpl extends LeafNode implements CheckboxNode {
     return this
   }
 
+  // Handler cleanup methods - prevent memory leaks
+  offChange(handler: (checked: boolean) => void): this {
+    const index = this._onChangeHandlers.indexOf(handler)
+    if (index > -1) {
+      this._onChangeHandlers.splice(index, 1)
+    }
+    return this
+  }
+
+  offFocus(handler: () => void): this {
+    const index = this._onFocusHandlers.indexOf(handler)
+    if (index > -1) {
+      this._onFocusHandlers.splice(index, 1)
+    }
+    return this
+  }
+
+  offBlur(handler: () => void): this {
+    const index = this._onBlurHandlers.indexOf(handler)
+    if (index > -1) {
+      this._onBlurHandlers.splice(index, 1)
+    }
+    return this
+  }
+
+  clearHandlers(): this {
+    this._onChangeHandlers = []
+    this._onFocusHandlers = []
+    this._onBlurHandlers = []
+    return this
+  }
+
   // Focus control
   focus(): this {
-    if (!this._focused) {
+    if (!this._disabled && !this._focused) {
       this._focused = true
       this.markDirty()
       for (const handler of this._onFocusHandlers) {

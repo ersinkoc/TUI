@@ -444,4 +444,300 @@ describe('Button Widget', () => {
       vi.useRealTimers()
     })
   })
+
+  describe('handler cleanup', () => {
+    it('should remove onClick handler with offClick', () => {
+      let callCount = 0
+      const handler = () => {
+        callCount++
+      }
+      const btn = button().onClick(handler)
+
+      btn.press()
+      expect(callCount).toBe(1)
+
+      btn.offClick(handler)
+      btn.press()
+      expect(callCount).toBe(1) // Should not increase
+    })
+
+    it('should remove specific onClick handler when multiple exist', () => {
+      const handler1 = vi.fn()
+      const handler2 = vi.fn()
+      const btn = button().onClick(handler1).onClick(handler2)
+
+      btn.press()
+      expect(handler1).toHaveBeenCalledTimes(1)
+      expect(handler2).toHaveBeenCalledTimes(1)
+
+      btn.offClick(handler1)
+      btn.press()
+      expect(handler1).toHaveBeenCalledTimes(1) // Not called again
+      expect(handler2).toHaveBeenCalledTimes(2) // Still called
+    })
+
+    it('should be chainable after offClick', () => {
+      const btn = button()
+      const handler = vi.fn()
+      const result = btn.onClick(handler).offClick(handler)
+      expect(result).toBe(btn)
+    })
+
+    it('should handle offClick with non-existent handler gracefully', () => {
+      const btn = button()
+      const handler = vi.fn()
+      expect(() => btn.offClick(handler)).not.toThrow()
+    })
+
+    it('should remove onFocus handler with offFocus', () => {
+      let callCount = 0
+      const handler = () => {
+        callCount++
+      }
+      const btn = button().onFocus(handler)
+
+      btn.focus()
+      expect(callCount).toBe(1)
+
+      btn.offFocus(handler)
+      btn.blur()
+      btn.focus()
+      expect(callCount).toBe(1) // Should not increase
+    })
+
+    it('should remove onBlur handler with offBlur', () => {
+      let callCount = 0
+      const handler = () => {
+        callCount++
+      }
+      const btn = button().onBlur(handler)
+
+      btn.focus()
+      btn.blur()
+      expect(callCount).toBe(1)
+
+      btn.offBlur(handler)
+      btn.focus()
+      btn.blur()
+      expect(callCount).toBe(1) // Should not increase
+    })
+
+    it('should clear all handlers with clearHandlers', () => {
+      const clickHandler = vi.fn()
+      const focusHandler = vi.fn()
+      const blurHandler = vi.fn()
+      const btn = button()
+        .onClick(clickHandler)
+        .onFocus(focusHandler)
+        .onBlur(blurHandler)
+
+      btn.clearHandlers()
+
+      btn.press()
+      btn.focus()
+      btn.blur()
+
+      expect(clickHandler).not.toHaveBeenCalled()
+      expect(focusHandler).not.toHaveBeenCalled()
+      expect(blurHandler).not.toHaveBeenCalled()
+    })
+
+    it('should be chainable after clearHandlers', () => {
+      const btn = button()
+      const result = btn.onClick(vi.fn()).clearHandlers()
+      expect(result).toBe(btn)
+    })
+
+    it('should allow adding handlers after clearHandlers', () => {
+      const handler = vi.fn()
+      const btn = button()
+        .onClick(vi.fn())
+        .clearHandlers()
+        .onClick(handler)
+
+      btn.press()
+      expect(handler).toHaveBeenCalled()
+    })
+  })
+
+  describe('dispose', () => {
+    it('should clear all handlers on dispose', () => {
+      const clickHandler = vi.fn()
+      const focusHandler = vi.fn()
+      const blurHandler = vi.fn()
+      const btn = button()
+        .onClick(clickHandler)
+        .onFocus(focusHandler)
+        .onBlur(blurHandler)
+
+      btn.dispose()
+
+      btn.press()
+      btn.focus()
+      btn.blur()
+
+      expect(clickHandler).not.toHaveBeenCalled()
+      expect(focusHandler).not.toHaveBeenCalled()
+      expect(blurHandler).not.toHaveBeenCalled()
+    })
+
+    it('should mark as disposed on dispose', () => {
+      const btn = button()
+      btn.dispose()
+      expect((btn as any)._disposed).toBe(true)
+    })
+
+    it('should not throw when disposing already disposed button', () => {
+      const btn = button()
+      btn.dispose()
+      expect(() => btn.dispose()).not.toThrow()
+    })
+
+    it('should not reset pressed state after timeout if disposed', () => {
+      vi.useFakeTimers()
+      const btn = button()
+
+      btn.press()
+      expect(btn.isPressed).toBe(true)
+
+      btn.dispose()
+      vi.advanceTimersByTime(150)
+
+      // Should remain true because disposed button doesn't update
+      expect(btn.isPressed).toBe(true)
+
+      vi.useRealTimers()
+    })
+  })
+
+  describe('mouse handling edge cases', () => {
+    it('should return true for hover inside bounds', () => {
+      const btn = button()
+      ;(btn as any)._bounds = { x: 0, y: 0, width: 10, height: 1 }
+
+      const result = (btn as any).handleMouse(5, 0, 'hover')
+      expect(result).toBe(true)
+    })
+
+    it('should return true for move inside bounds', () => {
+      const btn = button()
+      ;(btn as any)._bounds = { x: 0, y: 0, width: 10, height: 1 }
+
+      const result = (btn as any).handleMouse(5, 0, 'move')
+      expect(result).toBe(true)
+    })
+
+    it('should return false for hover outside bounds', () => {
+      const btn = button()
+      ;(btn as any)._bounds = { x: 0, y: 0, width: 10, height: 1 }
+
+      const result = (btn as any).handleMouse(15, 0, 'hover')
+      expect(result).toBe(false)
+    })
+
+    it('should handle click on left edge', () => {
+      const handler = vi.fn()
+      const btn = button().onClick(handler)
+      ;(btn as any)._bounds = { x: 10, y: 5, width: 10, height: 1 }
+
+      const result = (btn as any).handleMouse(10, 5, 'press')
+      expect(result).toBe(true)
+      expect(handler).toHaveBeenCalled()
+    })
+
+    it('should handle click on right edge (exclusive)', () => {
+      const handler = vi.fn()
+      const btn = button().onClick(handler)
+      ;(btn as any)._bounds = { x: 0, y: 0, width: 10, height: 1 }
+
+      const result = (btn as any).handleMouse(10, 0, 'press')
+      expect(result).toBe(false) // Outside bounds (exclusive)
+      expect(handler).not.toHaveBeenCalled()
+    })
+
+    it('should handle click on top edge', () => {
+      const handler = vi.fn()
+      const btn = button().onClick(handler)
+      ;(btn as any)._bounds = { x: 0, y: 5, width: 10, height: 3 }
+
+      const result = (btn as any).handleMouse(5, 5, 'press')
+      expect(result).toBe(true)
+      expect(handler).toHaveBeenCalled()
+    })
+
+    it('should handle click on bottom edge (exclusive)', () => {
+      const handler = vi.fn()
+      const btn = button().onClick(handler)
+      ;(btn as any)._bounds = { x: 0, y: 0, width: 10, height: 3 }
+
+      const result = (btn as any).handleMouse(5, 3, 'press')
+      expect(result).toBe(false) // Outside bounds (exclusive)
+      expect(handler).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('edge cases', () => {
+    it('should handle empty label', () => {
+      const btn = button().label('')
+      ;(btn as any)._bounds = { x: 0, y: 0, width: 10, height: 1 }
+
+      const buffer = createBuffer(20, 5)
+      expect(() => btn.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })).not.toThrow()
+    })
+
+    it('should handle very long label', () => {
+      const btn = button().label('This is a very very long button label')
+      ;(btn as any)._bounds = { x: 0, y: 0, width: 10, height: 1 }
+
+      const buffer = createBuffer(20, 5)
+      expect(() => btn.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })).not.toThrow()
+    })
+
+    it('should handle both icons', () => {
+      const btn = button()
+        .label('Save')
+        .icon('<')
+        .iconRight('>')
+
+      const buffer = createBuffer(20, 5)
+      ;(btn as any)._bounds = { x: 0, y: 0, width: 15, height: 1 }
+      expect(() => btn.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })).not.toThrow()
+    })
+
+    it('should handle percentage width', () => {
+      const btn = button().width('100%')
+      expect(btn).toBeDefined()
+    })
+
+    it('should handle multiple clicks', () => {
+      const handler = vi.fn()
+      const btn = button().onClick(handler)
+
+      btn.press().press().press()
+      expect(handler).toHaveBeenCalledTimes(3)
+    })
+
+    it('should handle press when focused', () => {
+      const handler = vi.fn()
+      const btn = button()
+        .onClick(handler)
+        .focus()
+
+      btn.press()
+      expect(handler).toHaveBeenCalled()
+      expect(btn.isFocused).toBe(true)
+    })
+
+    it('should handle rapid focus/blur', () => {
+      const focusHandler = vi.fn()
+      const blurHandler = vi.fn()
+      const btn = button()
+        .onFocus(focusHandler)
+        .onBlur(blurHandler)
+
+      btn.focus().blur().focus().blur()
+      expect(focusHandler).toHaveBeenCalledTimes(2)
+      expect(blurHandler).toHaveBeenCalledTimes(2)
+    })
+  })
 })

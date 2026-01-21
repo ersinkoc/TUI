@@ -709,4 +709,358 @@ describe('Modal Widget', () => {
       expect(m.isOpen).toBe(true)
     })
   })
+
+  describe('handler cleanup', () => {
+    it('should remove onOpen handler with offOpen', () => {
+      let callCount = 0
+      const handler = () => {
+        callCount++
+      }
+      const m = modal().onOpen(handler)
+
+      m.open()
+      expect(callCount).toBe(1)
+
+      m.offOpen(handler)
+      m.close()
+      m.open()
+      expect(callCount).toBe(1) // Should not increase
+    })
+
+    it('should remove specific onOpen handler when multiple exist', () => {
+      const handler1 = vi.fn()
+      const handler2 = vi.fn()
+      const m = modal().onOpen(handler1).onOpen(handler2)
+
+      m.open()
+      expect(handler1).toHaveBeenCalledTimes(1)
+      expect(handler2).toHaveBeenCalledTimes(1)
+
+      m.offOpen(handler1)
+      m.close()
+      m.open()
+      expect(handler1).toHaveBeenCalledTimes(1) // Not called again
+      expect(handler2).toHaveBeenCalledTimes(2) // Still called
+    })
+
+    it('should be chainable after offOpen', () => {
+      const m = modal()
+      const handler = vi.fn()
+      const result = m.onOpen(handler).offOpen(handler)
+      expect(result).toBe(m)
+    })
+
+    it('should handle offOpen with non-existent handler gracefully', () => {
+      const m = modal()
+      const handler = vi.fn()
+      expect(() => m.offOpen(handler)).not.toThrow()
+    })
+
+    it('should remove onClose handler with offClose', () => {
+      let callCount = 0
+      const handler = () => {
+        callCount++
+      }
+      const m = modal().onClose(handler).open()
+
+      m.close()
+      expect(callCount).toBe(1)
+
+      m.offClose(handler)
+      m.open()
+      m.close()
+      expect(callCount).toBe(1) // Should not increase
+    })
+
+    it('should remove onButton handler with offButton', () => {
+      let callCount = 0
+      const handler = () => {
+        callCount++
+      }
+      const m = modal()
+        .buttons([{ label: 'OK', value: 'ok' }])
+        .onButton(handler)
+        .open()
+
+      m.confirm()
+      expect(callCount).toBe(1)
+
+      m.offButton(handler)
+      m.open()
+      m.confirm()
+      expect(callCount).toBe(1) // Should not increase
+    })
+
+    it('should clear all handlers with clearHandlers', () => {
+      const openHandler = vi.fn()
+      const closeHandler = vi.fn()
+      const buttonHandler = vi.fn()
+      const m = modal()
+        .buttons([{ label: 'OK', value: 'ok' }])
+        .onOpen(openHandler)
+        .onClose(closeHandler)
+        .onButton(buttonHandler)
+
+      m.clearHandlers()
+
+      m.open()
+      m.close()
+      m.confirm()
+
+      expect(openHandler).not.toHaveBeenCalled()
+      expect(closeHandler).not.toHaveBeenCalled()
+      expect(buttonHandler).not.toHaveBeenCalled()
+    })
+
+    it('should be chainable after clearHandlers', () => {
+      const m = modal()
+      const result = m.onOpen(vi.fn()).clearHandlers()
+      expect(result).toBe(m)
+    })
+
+    it('should allow adding handlers after clearHandlers', () => {
+      const handler = vi.fn()
+      const m = modal()
+        .onOpen(vi.fn())
+        .clearHandlers()
+        .onOpen(handler)
+
+      m.open()
+      expect(handler).toHaveBeenCalled()
+    })
+  })
+
+  describe('dispose', () => {
+    it('should clear all handlers on dispose', () => {
+      const openHandler = vi.fn()
+      const closeHandler = vi.fn()
+      const buttonHandler = vi.fn()
+      const m = modal()
+        .buttons([{ label: 'OK', value: 'ok' }])
+        .onOpen(openHandler)
+        .onClose(closeHandler)
+        .onButton(buttonHandler)
+
+      m.dispose()
+
+      m.open()
+      m.close()
+      m.confirm()
+
+      expect(openHandler).not.toHaveBeenCalled()
+      expect(closeHandler).not.toHaveBeenCalled()
+      expect(buttonHandler).not.toHaveBeenCalled()
+    })
+
+    it('should clear content on dispose', () => {
+      const content = text('Test')
+      const m = modal().content(content)
+      expect(m).toBeDefined()
+
+      m.dispose()
+      // Content should be cleared
+      expect((m as any)._content).toBeNull()
+    })
+
+    it('should clear content parent reference on dispose', () => {
+      const content = text('Test')
+      const m = modal().content(content)
+      // Content parent should be set
+      expect(content._parent).toBeDefined()
+
+      m.dispose()
+      // Parent reference should be cleared
+      expect(content._parent).toBeNull()
+    })
+
+    it('should clear buttons on dispose', () => {
+      const m = modal().buttons([{ label: 'OK', value: 'ok' }])
+      m.dispose()
+      expect((m as any)._buttons).toEqual([])
+    })
+
+    it('should mark as disposed on dispose', () => {
+      const m = modal()
+      m.dispose()
+      expect((m as any)._disposed).toBe(true)
+    })
+
+    it('should not throw when disposing already disposed modal', () => {
+      const m = modal()
+      m.dispose()
+      expect(() => m.dispose()).not.toThrow()
+    })
+  })
+
+  describe('z-index management', () => {
+    it('should assign z-index when opened', () => {
+      const m = modal()
+      expect((m as any).zIndex).toBe(0)
+
+      m.open()
+      expect((m as any).zIndex).toBeGreaterThan(0)
+    })
+
+    it('should increase z-index for each opened modal', () => {
+      const m1 = modal().open()
+      const m2 = modal().open()
+
+      expect((m2 as any).zIndex).toBeGreaterThan((m1 as any).zIndex)
+    })
+
+    it('should check if modal is topmost', () => {
+      const m1 = modal().open()
+      const m2 = modal().open()
+
+      expect((m1 as any).isTopmost).toBe(false)
+      expect((m2 as any).isTopmost).toBe(true)
+    })
+
+    it('should bring modal to front', () => {
+      const m1 = modal().open()
+      const m2 = modal().open()
+
+      expect((m1 as any).isTopmost).toBe(false)
+
+      m1.bringToFront()
+      expect((m1 as any).isTopmost).toBe(true)
+      expect((m2 as any).isTopmost).toBe(false)
+    })
+
+    it('should not bring to front when closed', () => {
+      const m = modal()
+      const originalZIndex = (m as any).zIndex
+
+      m.bringToFront()
+      expect((m as any).zIndex).toBe(originalZIndex)
+    })
+  })
+
+  describe('modal stack management', () => {
+    it('should move modal to top when opened again after close', () => {
+      const m1 = modal().open()
+      const m2 = modal().open()
+
+      expect((m2 as any).isTopmost).toBe(true)
+
+      m1.close() // Close m1 first
+      m1.open() // Then re-open m1
+      expect((m1 as any).isTopmost).toBe(true)
+    })
+
+    it('should remove from stack when closed', () => {
+      const m = modal().open()
+      expect((m as any).isTopmost).toBe(true)
+
+      m.close()
+      // After closing, modal should not be topmost
+      // (it's removed from the stack)
+      expect((m as any).isTopmost).toBe(false)
+    })
+  })
+
+  describe('error handling in handlers', () => {
+    it('should catch errors in onOpen handlers', () => {
+      const m = modal().onOpen(() => {
+        throw new Error('Test error')
+      })
+
+      // Should not throw, error should be caught and logged
+      expect(() => m.open()).not.toThrow()
+      expect(m.isOpen).toBe(true)
+    })
+
+    it('should catch errors in onClose handlers', () => {
+      const m = modal().onClose(() => {
+        throw new Error('Test error')
+      }).open()
+
+      // Should not throw, error should be caught and logged
+      expect(() => m.close()).not.toThrow()
+      expect(m.isOpen).toBe(false)
+    })
+
+    it('should catch errors in onButton handlers', () => {
+      const m = modal()
+        .buttons([{ label: 'OK', value: 'ok' }])
+        .onButton(() => {
+          throw new Error('Test error')
+        })
+        .open()
+
+      // Should not throw, error should be caught and logged
+      expect(() => m.confirm()).not.toThrow()
+    })
+  })
+
+  describe('button navigation edge cases', () => {
+    it('should not navigate when no buttons', () => {
+      const m = modal().open()
+
+      m.selectNextButton()
+      m.selectPreviousButton()
+      expect(m.selectedButtonIndex).toBe(0)
+    })
+
+    it('should not confirm when not open', () => {
+      const handler = vi.fn()
+      const m = modal()
+        .buttons([{ label: 'OK', value: 'ok' }])
+        .onButton(handler)
+
+      m.confirm()
+      expect(handler).not.toHaveBeenCalled()
+      expect(m.isOpen).toBe(false)
+    })
+
+    it('should not confirm when no buttons', () => {
+      const m = modal().open()
+      m.confirm()
+      expect(m.isOpen).toBe(true)
+    })
+  })
+
+  describe('edge cases', () => {
+    it('should handle setting empty buttons', () => {
+      const m = modal().buttons([])
+      expect(m.selectedButtonIndex).toBe(0)
+    })
+
+    it('should handle modal with very small dimensions', () => {
+      const m = modal()
+        .width(5)
+        .height(3)
+        .open()
+      ;(m as any)._bounds = { x: 0, y: 0, width: 80, height: 24 }
+
+      const buffer = createBuffer(80, 24)
+      expect(() => m.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })).not.toThrow()
+    })
+
+    it('should handle content that is not BaseNode', () => {
+      const m = modal().content(null as any)
+      expect(m).toBeDefined()
+    })
+
+    it('should handle percentage dimensions', () => {
+      const m = modal()
+        .width('80%')
+        .height('60%')
+        .open()
+
+      expect(m.isOpen).toBe(true)
+    })
+
+    it('should handle button selection wrapping with single button', () => {
+      const m = modal()
+        .buttons([{ label: 'OK', value: 'ok' }])
+        .open()
+
+      m.selectNextButton()
+      expect(m.selectedButtonIndex).toBe(0)
+
+      m.selectPreviousButton()
+      expect(m.selectedButtonIndex).toBe(0)
+    })
+  })
 })

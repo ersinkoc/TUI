@@ -135,6 +135,17 @@ export abstract class BaseNode implements Node {
   /** @internal */
   _disposed: boolean = false
 
+  // Cache for bounds getter to avoid object creation
+  private _boundsCache: Bounds | null = null
+  private _boundsVersion: number = 0
+  private _currentVersion: number = 0
+
+  // Focus/Blur handler registries
+  /** @internal */
+  _onFocusHandlers: (() => void)[] = []
+  /** @internal */
+  _onBlurHandlers: (() => void)[] = []
+
   constructor() {
     this.id = generateId()
   }
@@ -181,6 +192,7 @@ export abstract class BaseNode implements Node {
   }
 
   get bounds(): Bounds {
+    // Always return a fresh copy to prevent external mutations
     return { ...this._bounds }
   }
 
@@ -197,6 +209,58 @@ export abstract class BaseNode implements Node {
   }
 
   /**
+   * Focus this node.
+   * Emits all registered focus handlers.
+   */
+  focus(): this {
+    for (const handler of this._onFocusHandlers) {
+      handler()
+    }
+    return this
+  }
+
+  /**
+   * Blur (remove focus from) this node.
+   * Emits all registered blur handlers.
+   */
+  blur(): this {
+    for (const handler of this._onBlurHandlers) {
+      handler()
+    }
+    return this
+  }
+
+  /**
+   * Register a handler to be called when this node is focused.
+   * @param handler - Function to call on focus
+   * @returns Unsubscribe function
+   */
+  onFocus(handler: () => void): () => void {
+    this._onFocusHandlers.push(handler)
+    return () => {
+      const index = this._onFocusHandlers.indexOf(handler)
+      if (index !== -1) {
+        this._onFocusHandlers.splice(index, 1)
+      }
+    }
+  }
+
+  /**
+   * Register a handler to be called when this node is blurred.
+   * @param handler - Function to call on blur
+   * @returns Unsubscribe function
+   */
+  onBlur(handler: () => void): () => void {
+    this._onBlurHandlers.push(handler)
+    return () => {
+      const index = this._onBlurHandlers.indexOf(handler)
+      if (index !== -1) {
+        this._onBlurHandlers.splice(index, 1)
+      }
+    }
+  }
+
+  /**
    * Mark node as needing re-render.
    * No-op if node is disposed.
    */
@@ -204,6 +268,8 @@ export abstract class BaseNode implements Node {
     if (this._disposed) return
     this._dirty = true
     this._layoutDirty = true
+    // Invalidate bounds cache
+    this._currentVersion++
     // Propagate to parent
     if (this._parent) {
       this._parent.markDirty()

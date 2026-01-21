@@ -48,6 +48,13 @@ export interface SelectNode<T extends SelectOption = SelectOption> extends Node 
   onFocus(handler: () => void): this
   onBlur(handler: () => void): this
 
+  // Handler cleanup - prevent memory leaks
+  offSelect(handler: (item: T, index: number) => void): this
+  offChange(handler: (item: T, index: number) => void): this
+  offFocus(handler: () => void): this
+  offBlur(handler: () => void): this
+  clearHandlers(): this
+
   // Focus control
   focus(): this
   blur(): this
@@ -160,9 +167,50 @@ class SelectNodeImpl<T extends SelectOption = SelectOption>
     return this
   }
 
+  // Handler cleanup methods - prevent memory leaks
+  offSelect(handler: (item: T, index: number) => void): this {
+    const index = this._onSelectHandlers.indexOf(handler)
+    if (index > -1) {
+      this._onSelectHandlers.splice(index, 1)
+    }
+    return this
+  }
+
+  offChange(handler: (item: T, index: number) => void): this {
+    const index = this._onChangeHandlers.indexOf(handler)
+    if (index > -1) {
+      this._onChangeHandlers.splice(index, 1)
+    }
+    return this
+  }
+
+  offFocus(handler: () => void): this {
+    const index = this._onFocusHandlers.indexOf(handler)
+    if (index > -1) {
+      this._onFocusHandlers.splice(index, 1)
+    }
+    return this
+  }
+
+  offBlur(handler: () => void): this {
+    const index = this._onBlurHandlers.indexOf(handler)
+    if (index > -1) {
+      this._onBlurHandlers.splice(index, 1)
+    }
+    return this
+  }
+
+  clearHandlers(): this {
+    this._onSelectHandlers = []
+    this._onChangeHandlers = []
+    this._onFocusHandlers = []
+    this._onBlurHandlers = []
+    return this
+  }
+
   // Focus control
   focus(): this {
-    if (!this._focused) {
+    if (!this._focused && !this._disposed) {
       this._focused = true
       this.markDirty()
       for (const handler of this._onFocusHandlers) {
@@ -200,12 +248,26 @@ class SelectNodeImpl<T extends SelectOption = SelectOption>
   /** @internal */
   selectPrevious(): void {
     if (this._selectedIndex > 0) {
-      // Skip disabled items
+      // Skip disabled items - prevent infinite loop
       let newIndex = this._selectedIndex - 1
-      while (newIndex > 0 && this._options[newIndex]?.disabled) {
+      let iterations = 0
+      const maxIterations = this._options.length // Safety limit
+
+      while (
+        newIndex >= 0 &&
+        iterations < maxIterations &&
+        this._options[newIndex]?.disabled
+      ) {
         newIndex--
+        iterations++
       }
-      if (!this._options[newIndex]?.disabled) {
+
+      // Only update if we found a valid selectable item
+      if (
+        newIndex >= 0 &&
+        iterations < maxIterations &&
+        !this._options[newIndex]?.disabled
+      ) {
         this._selectedIndex = newIndex
         this.ensureVisible()
         this.markDirty()
@@ -217,12 +279,26 @@ class SelectNodeImpl<T extends SelectOption = SelectOption>
   /** @internal */
   selectNext(): void {
     if (this._selectedIndex < this._options.length - 1) {
-      // Skip disabled items
+      // Skip disabled items - prevent infinite loop
       let newIndex = this._selectedIndex + 1
-      while (newIndex < this._options.length - 1 && this._options[newIndex]?.disabled) {
+      let iterations = 0
+      const maxIterations = this._options.length // Safety limit
+
+      while (
+        newIndex < this._options.length &&
+        iterations < maxIterations &&
+        this._options[newIndex]?.disabled
+      ) {
         newIndex++
+        iterations++
       }
-      if (!this._options[newIndex]?.disabled) {
+
+      // Only update if we found a valid selectable item
+      if (
+        newIndex < this._options.length &&
+        iterations < maxIterations &&
+        !this._options[newIndex]?.disabled
+      ) {
         this._selectedIndex = newIndex
         this.ensureVisible()
         this.markDirty()

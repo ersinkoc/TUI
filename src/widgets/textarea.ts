@@ -114,6 +114,12 @@ export interface TextareaNode extends Node {
   onFocus(handler: () => void): this
   onBlur(handler: () => void): this
 
+  // Handler cleanup - prevent memory leaks
+  offChange(handler: (value: string) => void): this
+  offFocus(handler: () => void): this
+  offBlur(handler: () => void): this
+  clearHandlers(): this
+
   // Focus control
   focus(): this
   blur(): this
@@ -183,9 +189,11 @@ class TextareaNodeImpl extends LeafNode implements TextareaNode {
   }
 
   maxLength(value: number): this {
-    this._maxLength = value
-    if (this._value.length > value) {
-      this._value = this._value.slice(0, value)
+    // Validate that maxLength is positive and finite
+    const validatedLength = Math.max(0, Math.floor(isFinite(value) ? value : 0))
+    this._maxLength = validatedLength
+    if (this._value.length > validatedLength) {
+      this._value = this._value.slice(0, validatedLength)
     }
     this.markDirty()
     return this
@@ -219,9 +227,41 @@ class TextareaNodeImpl extends LeafNode implements TextareaNode {
     return this
   }
 
+  // Handler cleanup methods - prevent memory leaks
+  offChange(handler: (value: string) => void): this {
+    const index = this._onChangeHandlers.indexOf(handler)
+    if (index > -1) {
+      this._onChangeHandlers.splice(index, 1)
+    }
+    return this
+  }
+
+  offFocus(handler: () => void): this {
+    const index = this._onFocusHandlers.indexOf(handler)
+    if (index > -1) {
+      this._onFocusHandlers.splice(index, 1)
+    }
+    return this
+  }
+
+  offBlur(handler: () => void): this {
+    const index = this._onBlurHandlers.indexOf(handler)
+    if (index > -1) {
+      this._onBlurHandlers.splice(index, 1)
+    }
+    return this
+  }
+
+  clearHandlers(): this {
+    this._onChangeHandlers = []
+    this._onFocusHandlers = []
+    this._onBlurHandlers = []
+    return this
+  }
+
   // Focus control
   focus(): this {
-    if (!this._focused) {
+    if (!this._focused && !this._disposed) {
       this._focused = true
       this.markDirty()
       for (const handler of this._onFocusHandlers) {

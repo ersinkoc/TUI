@@ -84,6 +84,13 @@ export interface AccordionNode extends Node {
   onFocus(handler: () => void): this
   onBlur(handler: () => void): this
 
+  // Handler cleanup - prevent memory leaks
+  offExpand(handler: (id: string) => void): this
+  offCollapse(handler: (id: string) => void): this
+  offFocus(handler: () => void): this
+  offBlur(handler: () => void): this
+  clearHandlers(): this
+
   // State
   readonly expandedPanels: string[]
   readonly focusedPanel: string | null
@@ -302,7 +309,7 @@ class AccordionNodeImpl extends ContainerNode implements AccordionNode {
   }
 
   focus(): this {
-    if (!this._focused) {
+    if (!this._focused && !this._disposed) {
       this._focused = true
       this.markDirty()
       for (const handler of this._onFocusHandlers) {
@@ -356,6 +363,47 @@ class AccordionNodeImpl extends ContainerNode implements AccordionNode {
 
   onBlur(handler: () => void): this {
     this._onBlurHandlers.push(handler)
+    return this
+  }
+
+  // Handler cleanup methods - prevent memory leaks
+  offExpand(handler: (id: string) => void): this {
+    const index = this._onExpandHandlers.indexOf(handler)
+    if (index > -1) {
+      this._onExpandHandlers.splice(index, 1)
+    }
+    return this
+  }
+
+  offCollapse(handler: (id: string) => void): this {
+    const index = this._onCollapseHandlers.indexOf(handler)
+    if (index > -1) {
+      this._onCollapseHandlers.splice(index, 1)
+    }
+    return this
+  }
+
+  offFocus(handler: () => void): this {
+    const index = this._onFocusHandlers.indexOf(handler)
+    if (index > -1) {
+      this._onFocusHandlers.splice(index, 1)
+    }
+    return this
+  }
+
+  offBlur(handler: () => void): this {
+    const index = this._onBlurHandlers.indexOf(handler)
+    if (index > -1) {
+      this._onBlurHandlers.splice(index, 1)
+    }
+    return this
+  }
+
+  clearHandlers(): this {
+    this._onExpandHandlers = []
+    this._onCollapseHandlers = []
+    this._onFocusHandlers = []
+    this._onBlurHandlers = []
     return this
   }
 
