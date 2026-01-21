@@ -412,6 +412,20 @@ class DrawerNodeImpl extends ContainerNode implements DrawerNode {
     return this
   }
 
+  /**
+   * Dispose of drawer and clear all handlers.
+   */
+  override dispose(): void {
+    if (this._disposed) return
+    this._items = []
+    this._expandedIds.clear()
+    this._contentNode = null
+    this._onOpenHandlers = []
+    this._onCloseHandlers = []
+    this._onSelectHandlers = []
+    super.dispose()
+  }
+
   // Focus
   focus(): this {
     this._isFocused = true

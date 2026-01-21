@@ -200,6 +200,19 @@ class CommandPaletteNodeImpl extends LeafNode implements CommandPaletteNode {
     return this
   }
 
+  /**
+   * Dispose of command palette and clear all handlers.
+   */
+  override dispose(): void {
+    if (this._disposed) return
+    this._commands = []
+    this._filteredItems = []
+    this._onSelectHandlers = []
+    this._onCloseHandlers = []
+    this._onChangeHandlers = []
+    super.dispose()
+  }
+
   // Internal: Filter items based on query
   private filterItems(): void {
     if (this._query === '') {

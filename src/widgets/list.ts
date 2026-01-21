@@ -4,7 +4,7 @@
  */
 
 import type { Node, Buffer, CellStyle, Dimension } from '../types'
-import { LeafNode } from './node'
+import { LeafNode, HandlerRegistry } from './node'
 import { DEFAULT_FG, DEFAULT_BG } from '../utils/color'
 import { stringWidth, truncateToWidth, padToWidth } from '../utils/unicode'
 import { ATTR_INVERSE, ATTR_DIM, ATTR_BOLD } from '../constants'
@@ -77,11 +77,20 @@ export interface ListNode<T = unknown> extends Node {
   selectAll(): this
   deselectAll(): this
 
-  // Events
+  // Events - chainable, returns this for builder pattern
   onSelect(handler: (item: ListItem<T>) => void): this
   onChange(handler: (selectedItems: ListItem<T>[]) => void): this
   onFocus(handler: () => void): this
   onBlur(handler: () => void): this
+
+  // Remove handlers (for cleanup)
+  offSelect(handler: (item: ListItem<T>) => void): this
+  offChange(handler: (selectedItems: ListItem<T>[]) => void): this
+  offFocus(handler: () => void): this
+  offBlur(handler: () => void): this
+
+  // Clear all handlers
+  clearHandlers(): this
 
   // Focus control
   focus(): this
@@ -112,10 +121,10 @@ class ListNodeImpl<T = unknown> extends LeafNode implements ListNode<T> {
   private _selectedIds: Set<string> = new Set()
   private _focused: boolean = false
 
-  private _onSelectHandlers: ((item: ListItem<T>) => void)[] = []
-  private _onChangeHandlers: ((selectedItems: ListItem<T>[]) => void)[] = []
-  private _onFocusHandlers: (() => void)[] = []
-  private _onBlurHandlers: (() => void)[] = []
+  private _selectHandlers = new HandlerRegistry<(item: ListItem<T>) => void>()
+  private _changeHandlers = new HandlerRegistry<(selectedItems: ListItem<T>[]) => void>()
+  private _focusHandlers = new HandlerRegistry<() => void>()
+  private _blurHandlers = new HandlerRegistry<() => void>()
 
   constructor(props?: ListProps<T>) {
     super()
@@ -336,25 +345,61 @@ class ListNodeImpl<T = unknown> extends LeafNode implements ListNode<T> {
     return this
   }
 
-  // Events
+  // Events - chainable for builder pattern
   onSelect(handler: (item: ListItem<T>) => void): this {
-    this._onSelectHandlers.push(handler)
+    this._selectHandlers.add(handler)
     return this
   }
 
   onChange(handler: (selectedItems: ListItem<T>[]) => void): this {
-    this._onChangeHandlers.push(handler)
+    this._changeHandlers.add(handler)
     return this
   }
 
   onFocus(handler: () => void): this {
-    this._onFocusHandlers.push(handler)
+    this._focusHandlers.add(handler)
     return this
   }
 
   onBlur(handler: () => void): this {
-    this._onBlurHandlers.push(handler)
+    this._blurHandlers.add(handler)
     return this
+  }
+
+  // Remove handlers (for cleanup)
+  offSelect(handler: (item: ListItem<T>) => void): this {
+    this._selectHandlers.remove(handler)
+    return this
+  }
+
+  offChange(handler: (selectedItems: ListItem<T>[]) => void): this {
+    this._changeHandlers.remove(handler)
+    return this
+  }
+
+  offFocus(handler: () => void): this {
+    this._focusHandlers.remove(handler)
+    return this
+  }
+
+  offBlur(handler: () => void): this {
+    this._blurHandlers.remove(handler)
+    return this
+  }
+
+  // Clear all handlers
+  clearHandlers(): this {
+    this._selectHandlers.clear()
+    this._changeHandlers.clear()
+    this._focusHandlers.clear()
+    this._blurHandlers.clear()
+    return this
+  }
+
+  // Override dispose to clean up handlers
+  override dispose(): void {
+    this.clearHandlers()
+    super.dispose()
   }
 
   // Focus control
@@ -362,9 +407,7 @@ class ListNodeImpl<T = unknown> extends LeafNode implements ListNode<T> {
     if (!this._focused) {
       this._focused = true
       this.markDirty()
-      for (const handler of this._onFocusHandlers) {
-        handler()
-      }
+      this._focusHandlers.emit()
     }
     return this
   }
@@ -373,9 +416,7 @@ class ListNodeImpl<T = unknown> extends LeafNode implements ListNode<T> {
     if (this._focused) {
       this._focused = false
       this.markDirty()
-      for (const handler of this._onBlurHandlers) {
-        handler()
-      }
+      this._blurHandlers.emit()
     }
     return this
   }
@@ -393,17 +434,13 @@ class ListNodeImpl<T = unknown> extends LeafNode implements ListNode<T> {
   private emitSelect(): void {
     const item = this._items[this._selectedIndex]
     if (item) {
-      for (const handler of this._onSelectHandlers) {
-        handler(item)
-      }
+      this._selectHandlers.emit(item)
     }
   }
 
   private emitChange(): void {
     const selected = this.selectedItems
-    for (const handler of this._onChangeHandlers) {
-      handler(selected)
-    }
+    this._changeHandlers.emit(selected)
   }
 
   // Internal: Handle key input
@@ -590,16 +627,31 @@ class ListNodeImpl<T = unknown> extends LeafNode implements ListNode<T> {
     }
 
     // Draw scrollbar if needed
-    if (this._items.length > height && this._items.length > 0) {
-      const scrollbarHeight = Math.max(1, Math.floor((height / this._items.length) * height))
-      const scrollRange = this._items.length - height
-      // Guard against division by zero
-      const scrollbarPos = scrollRange > 0
-        ? Math.floor((this._scrollOffset / scrollRange) * Math.max(0, height - scrollbarHeight))
-        : 0
+    // Safety checks: ensure all values are valid before calculations
+    const itemCount = this._items.length
+    if (itemCount > 0 && itemCount > height && height > 0 && width > 0) {
+      // Calculate scrollbar height - minimum 1, never exceed available height
+      const scrollbarHeight = Math.max(1, Math.min(height, Math.floor((height / itemCount) * height)))
 
+      // Calculate scroll range - items that can be scrolled past
+      const scrollRange = itemCount - height
+
+      // Calculate scrollbar position with all edge cases handled
+      let scrollbarPos = 0
+      if (scrollRange > 0) {
+        // Clamp scroll offset to valid range
+        const clampedOffset = Math.max(0, Math.min(this._scrollOffset, scrollRange))
+        // Calculate position, ensuring it stays within bounds
+        const availableTrack = Math.max(0, height - scrollbarHeight)
+        scrollbarPos = Math.floor((clampedOffset / scrollRange) * availableTrack)
+        // Final clamp to ensure we never exceed bounds
+        scrollbarPos = Math.max(0, Math.min(scrollbarPos, availableTrack))
+      }
+
+      // Draw scrollbar track and thumb
       for (let i = 0; i < height; i++) {
-        const char = i >= scrollbarPos && i < scrollbarPos + scrollbarHeight ? '█' : '░'
+        const isThumb = i >= scrollbarPos && i < scrollbarPos + scrollbarHeight
+        const char = isThumb ? '█' : '░'
         buffer.set(x + width - 1, y + i, { char, fg, bg, attrs: ATTR_DIM })
       }
     }

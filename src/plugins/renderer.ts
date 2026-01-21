@@ -146,7 +146,7 @@ export function rendererPlugin(options: RendererPluginOptions = {}): Plugin {
 
       const startTime = performance.now()
 
-      // Render the root node into buffer
+      // Render the root node into buffer with error boundary
       if (root instanceof BaseNode) {
         // Set root bounds to full screen
         root._bounds = {
@@ -163,7 +163,27 @@ export function rendererPlugin(options: RendererPluginOptions = {}): Plugin {
           attrs: 0
         }
 
-        root.render(state.buffer, defaultStyle)
+        // Error boundary: catch render errors to prevent app crash
+        // This allows partial rendering if only some widgets fail
+        try {
+          root.render(state.buffer, defaultStyle)
+        } catch (error) {
+          // Log error but continue - better to show partial UI than crash
+          console.error('[renderer] Error during render:', error)
+
+          // Try to show error message in buffer if possible
+          try {
+            const errorMsg = error instanceof Error ? error.message : 'Render error'
+            const truncatedMsg = errorMsg.slice(0, Math.min(app.width - 4, 60))
+            state.buffer.write(2, 0, `[!] ${truncatedMsg}`, {
+              fg: DEFAULT_FG,
+              bg: DEFAULT_BG,
+              attrs: 0
+            })
+          } catch {
+            // Ignore error display errors
+          }
+        }
       }
 
       // Force redraw if configured
@@ -171,8 +191,12 @@ export function rendererPlugin(options: RendererPluginOptions = {}): Plugin {
         state.renderer.invalidate()
       }
 
-      // Differential render to terminal
-      state.renderer.render(state.buffer)
+      // Differential render to terminal - also wrapped in try/catch
+      try {
+        state.renderer.render(state.buffer)
+      } catch (error) {
+        console.error('[renderer] Error writing to terminal:', error)
+      }
 
       // Update stats
       state.renderCount++

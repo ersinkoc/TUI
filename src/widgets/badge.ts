@@ -241,6 +241,16 @@ class BadgeNodeImpl extends LeafNode implements BadgeNode {
     return this
   }
 
+  /**
+   * Dispose of badge and clear all handlers.
+   */
+  override dispose(): void {
+    if (this._disposed) return
+    this._onClickHandlers = []
+    this._onRemoveHandlers = []
+    super.dispose()
+  }
+
   // Mouse handling
   /** @internal */
   handleMouse(x: number, y: number, action: string): boolean {

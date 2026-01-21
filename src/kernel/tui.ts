@@ -130,6 +130,8 @@ export function tui(options: TUIOptions = {}): TUIApp {
   const frameInterval = Math.floor(1000 / fps)
   let renderTimer: ReturnType<typeof setInterval> | null = null
   let cleanupSignalHandlers: (() => void) | null = null
+  let isRendering = false // Prevents race conditions during resize
+  let resizeGeneration = 0 // Tracks resize events to detect stale renders
 
   /**
    * Emit an event to listeners.
@@ -163,31 +165,54 @@ export function tui(options: TUIOptions = {}): TUIApp {
   function render(): void {
     if (!state.running || !state.root || !state.dirty) return
 
-    state.renderScheduled = false
-    state.dirty = false
+    // Prevent concurrent renders (race condition with resize)
+    if (isRendering) return
+    isRendering = true
 
-    // Call plugin beforeRender hooks
-    for (const plugin of state.plugins) {
-      if (plugin.beforeRender) {
-        plugin.beforeRender()
+    // Capture current generation to detect if resize happened during render
+    const currentGeneration = resizeGeneration
+
+    try {
+      state.renderScheduled = false
+      state.dirty = false
+
+      // Call plugin beforeRender hooks
+      for (const plugin of state.plugins) {
+        if (plugin.beforeRender) {
+          plugin.beforeRender()
+        }
       }
-    }
 
-    // Call plugin render hooks
-    for (const plugin of state.plugins) {
-      if (plugin.render) {
-        plugin.render(state.root)
+      // Check if resize happened during beforeRender
+      if (resizeGeneration !== currentGeneration) {
+        state.dirty = true
+        return
       }
-    }
 
-    // Call plugin afterRender hooks
-    for (const plugin of state.plugins) {
-      if (plugin.afterRender) {
-        plugin.afterRender()
+      // Call plugin render hooks
+      for (const plugin of state.plugins) {
+        if (plugin.render) {
+          plugin.render(state.root)
+        }
       }
-    }
 
-    emit('render')
+      // Check if resize happened during render
+      if (resizeGeneration !== currentGeneration) {
+        state.dirty = true
+        return
+      }
+
+      // Call plugin afterRender hooks
+      for (const plugin of state.plugins) {
+        if (plugin.afterRender) {
+          plugin.afterRender()
+        }
+      }
+
+      emit('render')
+    } finally {
+      isRendering = false
+    }
   }
 
   /**
@@ -196,6 +221,9 @@ export function tui(options: TUIOptions = {}): TUIApp {
   function handleResize(): void {
     const size = getTerminalSize(process.stdout)
     if (size.width !== state.width || size.height !== state.height) {
+      // Increment generation to invalidate any in-progress renders
+      resizeGeneration++
+
       state.width = size.width
       state.height = size.height
       state.buffer = createBuffer(state.width, state.height)
@@ -305,54 +333,50 @@ export function tui(options: TUIOptions = {}): TUIApp {
       return app
     },
 
-    quit(): Promise<void> {
-      return new Promise<void>(async resolve => {
-        if (!state.running) {
-          resolve()
-          return
+    async quit(): Promise<void> {
+      if (!state.running) {
+        return
+      }
+
+      state.running = false
+
+      // Call quit handlers
+      for (const handler of state.quitHandlers) {
+        try {
+          await handler()
+        } catch (error) {
+          console.error('Error in quit handler:', error)
         }
+      }
 
-        state.running = false
+      // Stop render loop
+      if (renderTimer) {
+        clearInterval(renderTimer)
+        renderTimer = null
+      }
 
-        // Call quit handlers
-        for (const handler of state.quitHandlers) {
-          try {
-            await handler()
-          } catch (error) {
-            console.error('Error in quit handler:', error)
+      // Remove resize handler
+      process.stdout.removeListener('resize', handleResize)
+
+      // Clean up signal handlers
+      if (cleanupSignalHandlers) {
+        cleanupSignalHandlers()
+        cleanupSignalHandlers = null
+      }
+
+      // Destroy plugins in reverse order
+      for (const plugin of [...state.plugins].reverse()) {
+        try {
+          if (plugin.destroy) {
+            plugin.destroy()
           }
+        } catch (error) {
+          console.error(`Error destroying plugin "${plugin.name}":`, error)
         }
+      }
+      state.plugins = []
 
-        // Stop render loop
-        if (renderTimer) {
-          clearInterval(renderTimer)
-          renderTimer = null
-        }
-
-        // Remove resize handler
-        process.stdout.removeListener('resize', handleResize)
-
-        // Clean up signal handlers
-        if (cleanupSignalHandlers) {
-          cleanupSignalHandlers()
-          cleanupSignalHandlers = null
-        }
-
-        // Destroy plugins in reverse order
-        for (const plugin of [...state.plugins].reverse()) {
-          try {
-            if (plugin.destroy) {
-              plugin.destroy()
-            }
-          } catch (error) {
-            console.error(`Error destroying plugin "${plugin.name}":`, error)
-          }
-        }
-        state.plugins = []
-
-        emit('quit')
-        resolve()
-      })
+      emit('quit')
     },
 
     refresh(): TUIApp {

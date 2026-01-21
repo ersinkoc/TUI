@@ -174,6 +174,57 @@ describe('Key Parsing Utilities', () => {
       const events = parser.parse(Buffer.from(''))
       expect(events.length).toBe(0)
     })
+
+    it('should buffer incomplete CSI sequence', () => {
+      const parser = createKeyParser()
+      // First parse: incomplete CSI sequence (ESC [)
+      const events1 = parser.parse(Buffer.from('\x1b['))
+      expect(events1.length).toBe(0) // Buffered, no events yet
+
+      // Second parse: complete the sequence
+      const events2 = parser.parse(Buffer.from('A'))
+      expect(events2.length).toBe(1)
+      expect(events2[0].name).toBe('up')
+    })
+
+    it('should buffer incomplete SS3 sequence', () => {
+      const parser = createKeyParser()
+      // First parse: incomplete SS3 sequence (ESC O)
+      const events1 = parser.parse(Buffer.from('\x1bO'))
+      expect(events1.length).toBe(0) // Buffered, no events yet
+
+      // Second parse: complete the sequence
+      const events2 = parser.parse(Buffer.from('P'))
+      expect(events2.length).toBe(1)
+      expect(events2[0].name).toBe('f1')
+    })
+
+    it('should handle split CSI sequence with parameters', () => {
+      const parser = createKeyParser()
+      // Split: ESC[1;5 | A (Ctrl+Up)
+      const events1 = parser.parse(Buffer.from('\x1b[1;5'))
+      expect(events1.length).toBe(0)
+
+      const events2 = parser.parse(Buffer.from('A'))
+      expect(events2.length).toBe(1)
+      expect(events2[0].name).toBe('up')
+      expect(events2[0].ctrl).toBe(true)
+    })
+
+    it('should handle regular characters after incomplete sequence', () => {
+      const parser = createKeyParser()
+      // First: incomplete sequence
+      const events1 = parser.parse(Buffer.from('\x1b['))
+      expect(events1.length).toBe(0)
+
+      // Second: complete sequence + regular characters
+      const events2 = parser.parse(Buffer.from('Aabc'))
+      expect(events2.length).toBe(4) // up, a, b, c
+      expect(events2[0].name).toBe('up')
+      expect(events2[1].name).toBe('a')
+      expect(events2[2].name).toBe('b')
+      expect(events2[3].name).toBe('c')
+    })
   })
 
   describe('parseKeyAt()', () => {

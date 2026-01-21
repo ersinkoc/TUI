@@ -715,6 +715,20 @@ class HelpNodeImpl extends ContainerNode implements HelpNode {
       })
     }
   }
+
+  /**
+   * Dispose of help widget and clear all handlers.
+   */
+  override dispose(): void {
+    if (this._disposed) return
+    this._sections = []
+    this._flatItems = []
+    this._filteredItems = []
+    this._onOpenHandlers = []
+    this._onCloseHandlers = []
+    this._onSelectHandlers = []
+    super.dispose()
+  }
 }
 
 // ============================================================

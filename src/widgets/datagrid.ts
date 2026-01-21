@@ -572,6 +572,21 @@ class DataGridNodeImpl<T = any> extends LeafNode implements DataGridNode<T> {
     return this
   }
 
+  /**
+   * Dispose of datagrid and clear all handlers.
+   */
+  override dispose(): void {
+    if (this._disposed) return
+    this._columns = []
+    this._data = []
+    this._selectedIndices.clear()
+    this._onSelectHandlers = []
+    this._onSortHandlers = []
+    this._onRowClickHandlers = []
+    this._onPageChangeHandlers = []
+    super.dispose()
+  }
+
   // Keyboard handling
   /** @internal */
   handleKey(key: string, ctrl: boolean): boolean {

@@ -464,6 +464,17 @@ class DiffViewerNodeImpl extends LeafNode implements DiffViewerNode {
     return this
   }
 
+  /**
+   * Dispose of diffviewer and clear all handlers.
+   */
+  override dispose(): void {
+    if (this._disposed) return
+    this._hunks = []
+    this._flatLines = []
+    this._onHunkSelectHandlers = []
+    super.dispose()
+  }
+
   // Focus
   focus(): this {
     this._isFocused = true

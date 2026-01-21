@@ -369,6 +369,15 @@ class ColorPickerNodeImpl extends LeafNode implements ColorPickerNode {
     return this
   }
 
+  /**
+   * Dispose of colorpicker and clear all handlers.
+   */
+  override dispose(): void {
+    if (this._disposed) return
+    this._onChangeHandlers = []
+    super.dispose()
+  }
+
   // Keyboard handling
   /** @internal */
   handleKey(key: string): boolean {

@@ -183,6 +183,19 @@ class SelectNodeImpl<T extends SelectOption = SelectOption>
     return this
   }
 
+  /**
+   * Dispose of select and clear all handlers.
+   */
+  override dispose(): void {
+    if (this._disposed) return
+    this._options = []
+    this._onSelectHandlers = []
+    this._onChangeHandlers = []
+    this._onFocusHandlers = []
+    this._onBlurHandlers = []
+    super.dispose()
+  }
+
   // Navigation
   /** @internal */
   selectPrevious(): void {

@@ -836,6 +836,18 @@ class MenubarNodeImpl extends LeafNode implements MenubarNode {
       })
     }
   }
+
+  /**
+   * Dispose of menubar and clear all handlers.
+   */
+  override dispose(): void {
+    if (this._disposed) return
+    this._menus = []
+    this._onSelectHandlers = []
+    this._onMenuOpenHandlers = []
+    this._onMenuCloseHandlers = []
+    super.dispose()
+  }
 }
 
 // ============================================================

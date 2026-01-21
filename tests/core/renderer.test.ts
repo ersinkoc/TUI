@@ -61,7 +61,9 @@ describe('createRenderer', () => {
     buffer.write(0, 0, 'Test', {})
     renderer.render(buffer)
 
-    expect(renderer.lastBuffer).not.toBeNull()
+    // lastBuffer returns null after memory optimization (double buffering)
+    // Internal snapshot is used instead of full buffer clone
+    expect(renderer.lastBuffer).toBeNull()
   })
 
   it('performs differential rendering', () => {
@@ -238,7 +240,9 @@ describe('createBatchedRenderer', () => {
     buffer.write(0, 0, 'Test', {})
     renderer.render(buffer)
 
-    expect(renderer.lastBuffer).not.toBeNull()
+    // lastBuffer returns null after memory optimization (double buffering)
+    // Internal snapshot is used instead of full buffer clone
+    expect(renderer.lastBuffer).toBeNull()
   })
 
   it('invalidate forces full redraw', () => {
@@ -371,7 +375,9 @@ describe('createStringRenderer', () => {
     buffer.write(0, 0, 'Test', {})
     renderer.render(buffer)
 
-    expect(renderer.lastBuffer).not.toBeNull()
+    // lastBuffer returns null after memory optimization (double buffering)
+    // Internal snapshot is used instead of full buffer clone
+    expect(renderer.lastBuffer).toBeNull()
   })
 
   it('invalidate clears output', () => {

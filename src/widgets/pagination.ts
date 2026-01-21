@@ -695,6 +695,15 @@ class PaginationNodeImpl extends LeafNode implements PaginationNode {
     const nextAttrs = nextFocused ? ATTR_INVERSE : (current < total - 1 ? 0 : ATTR_DIM)
     buffer.set(currentX, bounds.y, { char: this._labels.next, fg, bg, attrs: nextAttrs })
   }
+
+  /**
+   * Dispose of pagination and clear all handlers.
+   */
+  override dispose(): void {
+    if (this._disposed) return
+    this._onPageChangeHandlers = []
+    super.dispose()
+  }
 }
 
 // ============================================================

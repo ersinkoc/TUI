@@ -67,26 +67,60 @@ export function createBuffer(width: number, height: number): Buffer {
 
       let col = x
       for (const char of text) {
+        // Stop if we're past the buffer width
         if (col >= w) break
 
         const charWidth = getCharWidth(char)
 
+        // Skip characters that are completely off-screen (left side)
+        if (col + charWidth <= 0) {
+          col += charWidth
+          continue
+        }
+
+        // Handle wide character that starts off-screen but extends into view
+        // In this case, we show a placeholder space instead of the partial character
+        if (col < 0 && charWidth === 2) {
+          // The first half is off-screen, show space at position 0
+          cells[y * w] = { char: ' ', fg, bg, attrs }
+          col += charWidth
+          continue
+        }
+
+        // Only write if within bounds
         if (col >= 0) {
-          cells[y * w + col] = {
-            char,
-            fg,
-            bg,
-            attrs
+          // Check if we're overwriting a wide character's continuation cell
+          // If so, clear the original wide character
+          const existingCell = cells[y * w + col]
+          if (existingCell && existingCell.char === '' && col > 0) {
+            // This is a continuation cell, clear the character to its left
+            cells[y * w + col - 1] = { char: ' ', fg: cells[y * w + col - 1]?.fg ?? fg, bg: cells[y * w + col - 1]?.bg ?? bg, attrs: 0 }
           }
+
+          // Handle wide character that would be cut off at the right edge
+          if (charWidth === 2 && col + 1 >= w) {
+            // Wide character doesn't fit, show a space instead
+            cells[y * w + col] = { char: ' ', fg, bg, attrs }
+            col += charWidth
+            continue
+          }
+
+          // Write the character
+          cells[y * w + col] = { char, fg, bg, attrs }
 
           // For wide characters, fill next cell with empty space marker
           if (charWidth === 2 && col + 1 < w) {
-            cells[y * w + col + 1] = {
-              char: '',
-              fg,
-              bg,
-              attrs
+            // Check if we're overwriting another wide character's continuation
+            const nextExisting = cells[y * w + col + 1]
+            if (nextExisting && nextExisting.char === '' && col + 2 < w) {
+              // Clear the next wide character too
+              const afterNext = cells[y * w + col + 2]
+              if (afterNext) {
+                cells[y * w + col + 2] = { char: ' ', fg: afterNext.fg, bg: afterNext.bg, attrs: 0 }
+              }
             }
+
+            cells[y * w + col + 1] = { char: '', fg, bg, attrs }
           }
         }
 

@@ -414,6 +414,25 @@ class SearchInputNodeImpl extends LeafNode implements SearchInputNode {
     return this
   }
 
+  /**
+   * Dispose of search input and clear pending debounce timer.
+   */
+  override dispose(): void {
+    if (this._disposed) return
+    // Clear debounce timer
+    if (this._debounceTimer) {
+      clearTimeout(this._debounceTimer)
+      this._debounceTimer = null
+    }
+    // Clear handlers
+    this._onChangeHandlers = []
+    this._onSearchHandlers = []
+    this._onSubmitHandlers = []
+    this._onSuggestionSelectHandlers = []
+    this._onClearHandlers = []
+    super.dispose()
+  }
+
   private emitSearchEvent(): void {
     if (this._debounceTimer) {
       clearTimeout(this._debounceTimer)

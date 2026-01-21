@@ -370,6 +370,24 @@ class StopwatchNodeImpl extends LeafNode implements StopwatchNode {
     this.markDirty()
   }
 
+  /**
+   * Dispose of stopwatch and clear all handlers.
+   */
+  override dispose(): void {
+    if (this._disposed) return
+    // Stop any running timer
+    if (this._isRunning) {
+      this._isRunning = false
+    }
+    // Clear all handlers
+    this._onStartHandlers = []
+    this._onStopHandlers = []
+    this._onLapHandlers = []
+    this._onCompleteHandlers = []
+    this._onTickHandlers = []
+    super.dispose()
+  }
+
   // Keyboard handling
   /** @internal */
   handleKey(key: string): boolean {

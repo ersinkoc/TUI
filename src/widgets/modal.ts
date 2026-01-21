@@ -24,6 +24,69 @@ import { input } from './input'
 import { box } from './box'
 
 // ============================================================
+// Z-Index Management
+// ============================================================
+
+/**
+ * Global z-index counter for modal stacking.
+ * Each modal that opens gets the next available z-index.
+ */
+let globalZIndex = 0
+
+/**
+ * Active modal stack - tracks open modals in order.
+ */
+const modalStack: ModalNodeImpl[] = []
+
+/**
+ * Get the next z-index for a modal.
+ * @internal
+ */
+function getNextZIndex(): number {
+  return ++globalZIndex
+}
+
+/**
+ * Push modal onto stack.
+ * @internal
+ */
+function pushModal(modal: ModalNodeImpl): void {
+  const index = modalStack.indexOf(modal)
+  if (index !== -1) {
+    // Already in stack, move to top
+    modalStack.splice(index, 1)
+  }
+  modalStack.push(modal)
+}
+
+/**
+ * Remove modal from stack.
+ * @internal
+ */
+function removeModal(modal: ModalNodeImpl): void {
+  const index = modalStack.indexOf(modal)
+  if (index !== -1) {
+    modalStack.splice(index, 1)
+  }
+}
+
+/**
+ * Get the topmost (focused) modal.
+ * @internal
+ */
+export function getTopmostModal(): ModalNodeImpl | undefined {
+  return modalStack[modalStack.length - 1]
+}
+
+/**
+ * Check if a modal is the topmost one.
+ * @internal
+ */
+export function isTopmostModal(modal: ModalNodeImpl): boolean {
+  return modalStack[modalStack.length - 1] === modal
+}
+
+// ============================================================
 // Types
 // ============================================================
 
@@ -119,6 +182,9 @@ class ModalNodeImpl extends ContainerNode implements ModalNode {
   private _content: Node | null = null
   private _buttons: ModalButton[] = []
   private _selectedButton: number = 0
+
+  /** Z-index for modal stacking - higher values appear on top */
+  private _zIndex: number = 0
 
   private _onOpenHandlers: (() => void)[] = []
   private _onCloseHandlers: (() => void)[] = []
@@ -222,6 +288,9 @@ class ModalNodeImpl extends ContainerNode implements ModalNode {
     if (!this._isOpen) {
       this._isOpen = true
       this._visible = true
+      // Assign z-index and push onto modal stack
+      this._zIndex = getNextZIndex()
+      pushModal(this)
       this.markDirty()
       for (const handler of this._onOpenHandlers) {
         handler()
@@ -234,10 +303,39 @@ class ModalNodeImpl extends ContainerNode implements ModalNode {
     if (this._isOpen) {
       this._isOpen = false
       this._visible = false
+      // Remove from modal stack
+      removeModal(this)
       this.markDirty()
       for (const handler of this._onCloseHandlers) {
         handler()
       }
+    }
+    return this
+  }
+
+  /**
+   * Get the z-index of this modal.
+   * Higher values appear on top of lower values.
+   */
+  get zIndex(): number {
+    return this._zIndex
+  }
+
+  /**
+   * Check if this modal is the topmost (focused) modal.
+   */
+  get isTopmost(): boolean {
+    return isTopmostModal(this)
+  }
+
+  /**
+   * Bring this modal to the front.
+   */
+  bringToFront(): this {
+    if (this._isOpen) {
+      this._zIndex = getNextZIndex()
+      pushModal(this)
+      this.markDirty()
     }
     return this
   }
@@ -294,6 +392,25 @@ class ModalNodeImpl extends ContainerNode implements ModalNode {
   onButton(handler: (value: string) => void): this {
     this._onButtonHandlers.push(handler)
     return this
+  }
+
+  /**
+   * Dispose of modal and clear all handlers.
+   */
+  override dispose(): void {
+    if (this._disposed) return
+    // Remove from modal stack
+    removeModal(this)
+    // Clear content parent reference
+    if (this._content instanceof BaseNode) {
+      this._content._parent = null
+    }
+    this._content = null
+    this._buttons = []
+    this._onOpenHandlers = []
+    this._onCloseHandlers = []
+    this._onButtonHandlers = []
+    super.dispose()
   }
 
   // Internal: Handle key input

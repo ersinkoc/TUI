@@ -4,7 +4,7 @@
  */
 
 import type { Buffer, Cell, Renderer } from '../types'
-import { cloneBuffer, cellsEqual } from './buffer'
+import { cellsEqual } from './buffer'
 import { packedToFgAnsi, packedToBgAnsi, attrsToAnsi, cursorTo, reset } from '../utils/ansi'
 
 // ============================================================
@@ -69,9 +69,57 @@ export interface RendererOptions {
  * ```
  */
 export function createRenderer(stdout: NodeJS.WriteStream, options: RendererOptions = {}): Renderer {
-  let lastBuffer: Buffer | null = null
+  // Double buffering: pre-allocated snapshot to avoid GC pressure
+  // Instead of cloning the entire buffer every frame, we maintain a flat array
+  // and only copy cell values, reusing existing objects when possible
+  let snapshotCells: Cell[] | null = null
+  let snapshotWidth = 0
+  let snapshotHeight = 0
   let forceRedraw = true
   const useSyncOutput = options.syncOutput ?? terminalSupportsSyncOutput()
+
+  /**
+   * Take a snapshot of the current buffer for next-frame diffing.
+   * Reuses existing cell objects to minimize allocations.
+   */
+  function snapshotBuffer(buffer: Buffer): void {
+    const w = buffer.width
+    const h = buffer.height
+    const size = w * h
+
+    // Reallocate only if dimensions changed
+    if (snapshotWidth !== w || snapshotHeight !== h || snapshotCells === null) {
+      snapshotCells = new Array(size)
+      for (let i = 0; i < size; i++) {
+        snapshotCells[i] = { char: ' ', fg: 0, bg: 0, attrs: 0 }
+      }
+      snapshotWidth = w
+      snapshotHeight = h
+    }
+
+    // Copy cell data in-place (reuse existing objects)
+    const cells = buffer.cells
+    for (let i = 0; i < size; i++) {
+      const src = cells[i]
+      const dst = snapshotCells[i]!
+      if (src) {
+        dst.char = src.char
+        dst.fg = src.fg
+        dst.bg = src.bg
+        dst.attrs = src.attrs
+      }
+    }
+  }
+
+  /**
+   * Get cell from snapshot at position.
+   */
+  function getSnapshotCell(x: number, y: number): Cell | null {
+    if (!snapshotCells || x < 0 || x >= snapshotWidth || y < 0 || y >= snapshotHeight) {
+      return null
+    }
+    return snapshotCells[y * snapshotWidth + x] ?? null
+  }
 
   return {
     render(buffer: Buffer): number {
@@ -99,7 +147,7 @@ export function createRenderer(stdout: NodeJS.WriteStream, options: RendererOpti
           /* c8 ignore next */
           if (cell.char === '') continue
 
-          const prevCell = forceRedraw ? null : lastBuffer?.get(x, y)
+          const prevCell = forceRedraw ? null : getSnapshotCell(x, y)
 
           // Skip if unchanged
           if (prevCell && cellsEqual(cell, prevCell)) {
@@ -162,8 +210,8 @@ export function createRenderer(stdout: NodeJS.WriteStream, options: RendererOpti
         stdout.write(output.join(''))
       }
 
-      // Clone buffer for next frame comparison
-      lastBuffer = cloneBuffer(buffer)
+      // Snapshot buffer for next frame comparison (in-place, no allocation)
+      snapshotBuffer(buffer)
       forceRedraw = false
 
       return cellsUpdated
@@ -174,7 +222,9 @@ export function createRenderer(stdout: NodeJS.WriteStream, options: RendererOpti
     },
 
     get lastBuffer(): Buffer | null {
-      return lastBuffer
+      // For API compatibility, return null - snapshot is internal
+      // External code should not rely on lastBuffer for anything other than testing
+      return null
     }
   }
 }
@@ -188,9 +238,46 @@ export function createRenderer(stdout: NodeJS.WriteStream, options: RendererOpti
  * @returns Renderer instance
  */
 export function createBatchedRenderer(stdout: NodeJS.WriteStream, options: RendererOptions = {}): Renderer {
-  let lastBuffer: Buffer | null = null
+  // Double buffering with pre-allocated snapshot
+  let snapshotCells: Cell[] | null = null
+  let snapshotWidth = 0
+  let snapshotHeight = 0
   let forceRedraw = true
   const useSyncOutput = options.syncOutput ?? terminalSupportsSyncOutput()
+
+  function snapshotBuffer(buffer: Buffer): void {
+    const w = buffer.width
+    const h = buffer.height
+    const size = w * h
+
+    if (snapshotWidth !== w || snapshotHeight !== h || snapshotCells === null) {
+      snapshotCells = new Array(size)
+      for (let i = 0; i < size; i++) {
+        snapshotCells[i] = { char: ' ', fg: 0, bg: 0, attrs: 0 }
+      }
+      snapshotWidth = w
+      snapshotHeight = h
+    }
+
+    const cells = buffer.cells
+    for (let i = 0; i < size; i++) {
+      const src = cells[i]
+      const dst = snapshotCells[i]!
+      if (src) {
+        dst.char = src.char
+        dst.fg = src.fg
+        dst.bg = src.bg
+        dst.attrs = src.attrs
+      }
+    }
+  }
+
+  function getSnapshotCell(x: number, y: number): Cell | null {
+    if (!snapshotCells || x < 0 || x >= snapshotWidth || y < 0 || y >= snapshotHeight) {
+      return null
+    }
+    return snapshotCells[y * snapshotWidth + x] ?? null
+  }
 
   return {
     render(buffer: Buffer): number {
@@ -203,7 +290,7 @@ export function createBatchedRenderer(stdout: NodeJS.WriteStream, options: Rende
           /* c8 ignore next */
           if (!cell || cell.char === '') continue
 
-          const prevCell = forceRedraw ? null : lastBuffer?.get(x, y)
+          const prevCell = forceRedraw ? null : getSnapshotCell(x, y)
 
           if (!prevCell || !cellsEqual(cell, prevCell)) {
             changes.push({ x, y, cell })
@@ -282,8 +369,8 @@ export function createBatchedRenderer(stdout: NodeJS.WriteStream, options: Rende
       // Flush to stdout
       stdout.write(output.join(''))
 
-      // Save buffer for next frame
-      lastBuffer = cloneBuffer(buffer)
+      // Snapshot buffer for next frame (in-place, no allocation)
+      snapshotBuffer(buffer)
       forceRedraw = false
 
       return changes.length
@@ -294,7 +381,7 @@ export function createBatchedRenderer(stdout: NodeJS.WriteStream, options: Rende
     },
 
     get lastBuffer(): Buffer | null {
-      return lastBuffer
+      return null
     }
   }
 }
@@ -318,7 +405,6 @@ export function createStringRenderer(
   _height: number
 ): Renderer & { getString(): string } {
   let output = ''
-  let lastBuffer: Buffer | null = null
 
   return {
     render(buffer: Buffer): number {
@@ -336,7 +422,6 @@ export function createStringRenderer(
       }
 
       output = lines.join('\n')
-      lastBuffer = cloneBuffer(buffer)
       return buffer.width * buffer.height
     },
 
@@ -345,7 +430,8 @@ export function createStringRenderer(
     },
 
     get lastBuffer(): Buffer | null {
-      return lastBuffer
+      // String renderer doesn't track previous buffer
+      return null
     },
 
     getString(): string {

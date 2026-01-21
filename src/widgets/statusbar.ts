@@ -231,6 +231,21 @@ class StatusbarNodeImpl extends LeafNode implements StatusbarNode {
     return this
   }
 
+  /**
+   * Dispose of statusbar and clear pending timeouts.
+   */
+  override dispose(): void {
+    if (this._disposed) return
+    // Clear message timeout
+    if (this._messageTimeout) {
+      clearTimeout(this._messageTimeout)
+      this._messageTimeout = null
+    }
+    // Clear handlers
+    this._onItemClickHandlers = []
+    super.dispose()
+  }
+
   setProgress(value: number, max?: number): this {
     this._progressValue = Math.max(0, Math.min(value, max ?? this._progressMax))
     if (max !== undefined) {

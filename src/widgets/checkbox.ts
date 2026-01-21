@@ -166,6 +166,17 @@ class CheckboxNodeImpl extends LeafNode implements CheckboxNode {
     }
   }
 
+  /**
+   * Dispose of checkbox and clear all handlers.
+   */
+  override dispose(): void {
+    if (this._disposed) return
+    this._onChangeHandlers = []
+    this._onFocusHandlers = []
+    this._onBlurHandlers = []
+    super.dispose()
+  }
+
   // Render
   render(buffer: Buffer, parentStyle: CellStyle): void {
     if (!this.isVisible) return

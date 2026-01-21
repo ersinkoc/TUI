@@ -359,6 +359,27 @@ class AccordionNodeImpl extends ContainerNode implements AccordionNode {
     return this
   }
 
+  /**
+   * Dispose of accordion and clear all handlers.
+   */
+  override dispose(): void {
+    if (this._disposed) return
+    // Clear panel content parents
+    for (const panel of this._panels) {
+      if (panel.content instanceof BaseNode) {
+        panel.content._parent = null
+      }
+    }
+    this._panels = []
+    this._expandedPanels.clear()
+    // Clear all handlers
+    this._onExpandHandlers = []
+    this._onCollapseHandlers = []
+    this._onFocusHandlers = []
+    this._onBlurHandlers = []
+    super.dispose()
+  }
+
   // Internal: Handle key input
   /** @internal */
   handleKey(key: string, _ctrl: boolean): boolean {

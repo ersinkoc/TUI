@@ -674,6 +674,17 @@ class TimelineNodeImpl extends LeafNode implements TimelineNode {
       }
     }
   }
+
+  /**
+   * Dispose of timeline and clear all handlers.
+   */
+  override dispose(): void {
+    if (this._disposed) return
+    this._items = []
+    this._onSelectHandlers = []
+    this._onClickHandlers = []
+    super.dispose()
+  }
 }
 
 // ============================================================

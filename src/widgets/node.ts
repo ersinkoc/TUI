@@ -9,7 +9,8 @@ import type { Node, Bounds, LayoutProps, StyleProps, Buffer, CellStyle } from '.
 // ID Generation
 // ============================================================
 
-let idCounter = 0
+// Use BigInt for safe counter that never overflows
+let idCounter = 0n
 
 /**
  * Generate a unique node ID.
@@ -17,14 +18,82 @@ let idCounter = 0
  * @returns Unique ID string
  */
 export function generateId(): string {
-  return `node_${++idCounter}`
+  idCounter++
+  return `node_${idCounter}`
 }
 
 /**
- * Reset ID counter (for testing).
+ * Reset ID counter (for testing only - DO NOT use in production).
+ * @internal
  */
 export function resetIdCounter(): void {
-  idCounter = 0
+  if (process.env.NODE_ENV !== 'test' && process.env.NODE_ENV !== 'development') {
+    console.warn('resetIdCounter() should only be used in tests')
+  }
+  idCounter = 0n
+}
+
+// ============================================================
+// Event Handler Utilities
+// ============================================================
+
+/**
+ * Type for unsubscribe function returned by event subscription.
+ */
+export type Unsubscribe = () => void
+
+/**
+ * Helper class for managing event handlers with cleanup support.
+ * @internal
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export class HandlerRegistry<T extends (...args: any[]) => void> {
+  private handlers: T[] = []
+
+  /**
+   * Add a handler and return unsubscribe function.
+   */
+  add(handler: T): Unsubscribe {
+    this.handlers.push(handler)
+    return () => this.remove(handler)
+  }
+
+  /**
+   * Remove a specific handler.
+   */
+  remove(handler: T): boolean {
+    const index = this.handlers.indexOf(handler)
+    if (index !== -1) {
+      this.handlers.splice(index, 1)
+      return true
+    }
+    return false
+  }
+
+  /**
+   * Call all handlers with arguments.
+   */
+  emit(...args: Parameters<T>): void {
+    // Create a copy to handle removal during iteration
+    const snapshot = [...this.handlers]
+    for (const handler of snapshot) {
+      handler(...args)
+    }
+  }
+
+  /**
+   * Remove all handlers.
+   */
+  clear(): void {
+    this.handlers = []
+  }
+
+  /**
+   * Get number of registered handlers.
+   */
+  get size(): number {
+    return this.handlers.length
+  }
 }
 
 // ============================================================
@@ -129,13 +198,26 @@ export abstract class BaseNode implements Node {
 
   /**
    * Mark node as needing re-render.
+   * No-op if node is disposed.
    */
   markDirty(): void {
+    if (this._disposed) return
     this._dirty = true
     this._layoutDirty = true
     // Propagate to parent
     if (this._parent) {
       this._parent.markDirty()
+    }
+  }
+
+  /**
+   * Throws an error if node has been disposed.
+   * Use this in methods that shouldn't be called after dispose.
+   * @internal
+   */
+  protected assertNotDisposed(): void {
+    if (this._disposed) {
+      throw new Error(`Cannot perform operation on disposed node (id: ${this.id})`)
     }
   }
 

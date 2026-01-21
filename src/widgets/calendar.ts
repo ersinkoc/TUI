@@ -329,6 +329,18 @@ class CalendarNodeImpl extends LeafNode implements CalendarNode {
     return this
   }
 
+  /**
+   * Dispose of calendar and clear all handlers.
+   */
+  override dispose(): void {
+    if (this._disposed) return
+    this._onSelectHandlers = []
+    this._onChangeHandlers = []
+    this._onFocusHandlers = []
+    this._onBlurHandlers = []
+    super.dispose()
+  }
+
   // Internal: Handle key input
   /** @internal */
   handleKey(key: string, ctrl: boolean): boolean {

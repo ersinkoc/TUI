@@ -286,6 +286,15 @@ class ScrollbarNodeImpl extends LeafNode implements ScrollbarNode {
       }
     }
   }
+
+  /**
+   * Dispose of scrollbar and clear all handlers.
+   */
+  override dispose(): void {
+    if (this._disposed) return
+    this._onScrollHandlers = []
+    super.dispose()
+  }
 }
 
 // ============================================================

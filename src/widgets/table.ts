@@ -227,6 +227,20 @@ class TableNodeImpl<T extends Record<string, unknown> = Record<string, unknown>>
     return this
   }
 
+  /**
+   * Dispose of table and clear all handlers.
+   */
+  override dispose(): void {
+    if (this._disposed) return
+    this._columns = []
+    this._data = []
+    this._onSelectHandlers = []
+    this._onChangeHandlers = []
+    this._onFocusHandlers = []
+    this._onBlurHandlers = []
+    super.dispose()
+  }
+
   // Navigation
   /** @internal */
   selectPrevious(): void {
@@ -357,8 +371,13 @@ class TableNodeImpl<T extends Record<string, unknown> = Record<string, unknown>>
     /* c8 ignore next */
     if (numCols === 0) return []
 
+    // Guard against invalid total width
+    if (totalWidth <= 0) {
+      return this._columns.map(() => 1) // Minimum 1 char per column
+    }
+
     const separatorWidth = numCols - 1
-    const availableWidth = totalWidth - separatorWidth
+    const availableWidth = Math.max(numCols, totalWidth - separatorWidth) // At least 1 per column
 
     const widths: number[] = []
     let fixedWidth = 0
@@ -367,8 +386,10 @@ class TableNodeImpl<T extends Record<string, unknown> = Record<string, unknown>>
     // First pass: calculate fixed widths
     for (const col of this._columns) {
       if (typeof col.width === 'number') {
-        widths.push(col.width)
-        fixedWidth += col.width
+        // Ensure fixed width is at least 1
+        const colWidth = Math.max(1, col.width)
+        widths.push(colWidth)
+        fixedWidth += colWidth
       } else {
         widths.push(0)
         autoCount++
@@ -377,11 +398,32 @@ class TableNodeImpl<T extends Record<string, unknown> = Record<string, unknown>>
 
     // Second pass: distribute remaining width
     if (autoCount > 0) {
-      const autoWidth = Math.floor((availableWidth - fixedWidth) / autoCount)
+      const remainingWidth = availableWidth - fixedWidth
+      // Guard against negative remaining width
+      const autoWidth = Math.max(1, Math.floor(remainingWidth / autoCount))
+
+      // Track how much width we've assigned to auto columns
+      let assignedAutoWidth = 0
+      let autoIndex = 0
+
       for (let i = 0; i < widths.length; i++) {
         if (widths[i] === 0) {
-          widths[i] = autoWidth
+          autoIndex++
+          // Last auto column gets any remainder to ensure total matches
+          if (autoIndex === autoCount) {
+            widths[i] = Math.max(1, remainingWidth - assignedAutoWidth)
+          } else {
+            widths[i] = autoWidth
+            assignedAutoWidth += autoWidth
+          }
         }
+      }
+    }
+
+    // Final validation: ensure no width is less than 1
+    for (let i = 0; i < widths.length; i++) {
+      if (widths[i]! < 1) {
+        widths[i] = 1
       }
     }
 

@@ -785,6 +785,17 @@ class KanbanNodeImpl extends LeafNode implements KanbanNode {
       buffer.write(innerX, lineY, assigneeText, { fg: 244, bg: cardBg, attrs: ATTR_DIM })
     }
   }
+
+  /**
+   * Dispose of kanban and clear all handlers.
+   */
+  override dispose(): void {
+    if (this._disposed) return
+    this._columns = []
+    this._onSelectHandlers = []
+    this._onMoveHandlers = []
+    super.dispose()
+  }
 }
 
 export function kanban(props?: KanbanProps): KanbanNode {

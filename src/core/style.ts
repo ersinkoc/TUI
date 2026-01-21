@@ -3,7 +3,7 @@
  * @packageDocumentation
  */
 
-import type { StyleResolver, CellStyle, Theme, Node, StyleProps } from '../types'
+import type { StyleResolver, CellStyle, Theme, ThemeColors, Node, StyleProps } from '../types'
 import { parseColorWithDefault, DEFAULT_FG, DEFAULT_BG } from '../utils/color'
 import {
   ATTR_BOLD,
@@ -53,7 +53,8 @@ export function createStyleResolver(theme: Theme): StyleResolver {
       let fg = DEFAULT_FG
       if (styleProps.color) {
         if (isThemeColorKey(styleProps.color)) {
-          fg = resolveThemeColor(styleProps.color as keyof Theme['colors'])
+          // Type guard narrows to keyof ThemeColors, no cast needed
+          fg = resolveThemeColor(styleProps.color)
         } else {
           fg = parseColorWithDefault(styleProps.color, DEFAULT_FG)
         }
@@ -63,7 +64,8 @@ export function createStyleResolver(theme: Theme): StyleResolver {
       let bg = DEFAULT_BG
       if (styleProps.bg) {
         if (isThemeColorKey(styleProps.bg)) {
-          bg = resolveThemeColor(styleProps.bg as keyof Theme['colors'])
+          // Type guard narrows to keyof ThemeColors, no cast needed
+          bg = resolveThemeColor(styleProps.bg)
         } else {
           bg = parseColorWithDefault(styleProps.bg, DEFAULT_BG)
         }
@@ -109,32 +111,38 @@ function getStyleProps(node: Node): StyleProps {
 }
 
 /**
+ * All valid theme color keys, derived from ThemeColors interface.
+ * This ensures type safety - if ThemeColors changes, TypeScript will catch it.
+ */
+const THEME_COLOR_KEYS: ReadonlySet<keyof ThemeColors> = new Set([
+  'primary',
+  'secondary',
+  'background',
+  'surface',
+  'text',
+  'textMuted',
+  'border',
+  'error',
+  'warning',
+  'success',
+  'info',
+  'inputBg',
+  'inputBorder',
+  'inputFocusBorder',
+  'selectHighlight',
+  'tableHeaderBg',
+  'tableStripeBg'
+] as const satisfies readonly (keyof ThemeColors)[])
+
+/**
  * Check if a color value is a theme color key.
+ * Type guard that narrows the type to keyof ThemeColors.
  *
  * @param color - Color value
  * @returns True if theme color key
  */
-function isThemeColorKey(color: string): boolean {
-  const themeColorKeys = [
-    'primary',
-    'secondary',
-    'background',
-    'surface',
-    'text',
-    'textMuted',
-    'border',
-    'error',
-    'warning',
-    'success',
-    'info',
-    'inputBg',
-    'inputBorder',
-    'inputFocusBorder',
-    'selectHighlight',
-    'tableHeaderBg',
-    'tableStripeBg'
-  ]
-  return themeColorKeys.includes(color)
+function isThemeColorKey(color: string): color is keyof ThemeColors {
+  return THEME_COLOR_KEYS.has(color as keyof ThemeColors)
 }
 
 // ============================================================

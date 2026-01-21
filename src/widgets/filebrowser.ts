@@ -891,6 +891,26 @@ class FileBrowserNodeImpl extends LeafNode implements FileBrowserNode {
     return this
   }
 
+  /**
+   * Dispose of file browser and clear all handlers.
+   */
+  override dispose(): void {
+    if (this._disposed) return
+    this._entries = []
+    this._selectedPaths.clear()
+    this._history = []
+    this._onNavigateHandlers = []
+    this._onSelectHandlers = []
+    this._onOpenHandlers = []
+    this._onCreateHandlers = []
+    this._onDeleteHandlers = []
+    this._onRenameHandlers = []
+    this._onErrorHandlers = []
+    this._onFocusHandlers = []
+    this._onBlurHandlers = []
+    super.dispose()
+  }
+
   // Internal: Handle key input
   /** @internal */
   handleKey(key: string, ctrl: boolean): boolean {

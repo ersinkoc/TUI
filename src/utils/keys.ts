@@ -31,6 +31,8 @@ export interface KeyParser {
 /**
  * Create a key parser.
  *
+ * Handles incomplete escape sequences by buffering partial data across calls.
+ *
  * @returns Key parser instance
  *
  * @example
@@ -41,14 +43,26 @@ export interface KeyParser {
  * ```
  */
 export function createKeyParser(): KeyParser {
+  // Buffer for incomplete escape sequences
+  let pendingBuffer = ''
+
   return {
     parse(data: Buffer): KeyEvent[] {
       const events: KeyEvent[] = []
-      const str = data.toString('utf8')
+      const str = pendingBuffer + data.toString('utf8')
+      pendingBuffer = ''
       let i = 0
 
       while (i < str.length) {
         const result = parseKeyAt(str, i)
+
+        // Check if this is an incomplete escape sequence
+        if (result.incomplete) {
+          // Buffer the remaining data for next parse call
+          pendingBuffer = str.slice(i)
+          break
+        }
+
         events.push(result.key)
         i += result.consumed
       }
@@ -59,13 +73,23 @@ export function createKeyParser(): KeyParser {
 }
 
 /**
+ * Result from parsing a key at a position.
+ */
+export interface ParseKeyResult {
+  key: KeyEvent
+  consumed: number
+  /** True if the sequence is incomplete and needs more data */
+  incomplete?: boolean
+}
+
+/**
  * Parse a key event at position in string.
  *
  * @param str - Input string
  * @param start - Start position
  * @returns Key event and number of characters consumed
  */
-export function parseKeyAt(str: string, start: number): { key: KeyEvent; consumed: number } {
+export function parseKeyAt(str: string, start: number): ParseKeyResult {
   const char = str[start]
 
   if (char === undefined) {
@@ -104,7 +128,10 @@ export function parseKeyAt(str: string, start: number): { key: KeyEvent; consume
       }
     }
 
-    // Bare escape
+    // Lone ESC at end of string - return as escape key
+    // Note: This could be start of an incomplete sequence, but we can't
+    // distinguish between a user pressing ESC and an incomplete sequence
+    // without a timeout mechanism. For immediate parsing, treat as ESC.
     return {
       key: createKeyEvent('escape', ESC),
       consumed: 1
@@ -136,16 +163,28 @@ export function parseKeyAt(str: string, start: number): { key: KeyEvent; consume
  * @param start - Start position
  * @returns Key event and consumed length
  */
-function parseCSI(str: string, start: number): { key: KeyEvent; consumed: number } {
+function parseCSI(str: string, start: number): ParseKeyResult {
   // Find end of CSI sequence (letter that's not a parameter)
   let end = start + 2
+  let foundTerminator = false
+
   while (end < str.length) {
     const c = str[end]
     if (c !== undefined && c >= '@' && c <= '~') {
       end++
+      foundTerminator = true
       break
     }
     end++
+  }
+
+  // If we didn't find a terminator, the sequence is incomplete
+  if (!foundTerminator) {
+    return {
+      key: createKeyEvent('', ''),
+      consumed: 0,
+      incomplete: true
+    }
   }
 
   const sequence = str.slice(start, end)
@@ -182,7 +221,17 @@ function parseCSI(str: string, start: number): { key: KeyEvent; consumed: number
  * @param start - Start position
  * @returns Key event and consumed length
  */
-function parseSS3(str: string, start: number): { key: KeyEvent; consumed: number } {
+function parseSS3(str: string, start: number): ParseKeyResult {
+  // SS3 sequences are 3 bytes: ESC O <char>
+  // Check if we have enough data
+  if (start + 2 >= str.length) {
+    return {
+      key: createKeyEvent('', ''),
+      consumed: 0,
+      incomplete: true
+    }
+  }
+
   const sequence = str.slice(start, start + 3)
   /* c8 ignore next 3 */
   const finalByte = sequence[2] || ''

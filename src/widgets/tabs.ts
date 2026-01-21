@@ -195,6 +195,24 @@ class TabsNodeImpl extends ContainerNode implements TabsNode {
     return this
   }
 
+  /**
+   * Dispose of tabs and clear all handlers.
+   */
+  override dispose(): void {
+    if (this._disposed) return
+    // Clear tab content parent references
+    for (const tab of this._tabs) {
+      if (tab.content instanceof BaseNode) {
+        tab.content._parent = null
+      }
+    }
+    this._tabs = []
+    this._onChangeHandlers = []
+    this._onFocusHandlers = []
+    this._onBlurHandlers = []
+    super.dispose()
+  }
+
   // Navigation
   /** @internal */
   selectPrevious(): void {

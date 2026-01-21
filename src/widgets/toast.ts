@@ -98,6 +98,8 @@ class ToastNodeImpl extends LeafNode implements ToastNode {
   private _width: number = 40
   private _toasts: ToastMessage[] = []
   private _idCounter: number = 0
+  /** Map of toast IDs to their auto-dismiss timeout handles */
+  private _timeouts: Map<string, ReturnType<typeof setTimeout>> = new Map()
 
   constructor(props?: ToastProps) {
     super()
@@ -175,9 +177,11 @@ class ToastNodeImpl extends LeafNode implements ToastNode {
 
     // Auto-dismiss if duration > 0
     if (toast.duration > 0) {
-      setTimeout(() => {
+      const timeoutId = setTimeout(() => {
+        this._timeouts.delete(id)
         this.dismiss(id)
       }, toast.duration)
+      this._timeouts.set(id, timeoutId)
     }
 
     this.markDirty()
@@ -188,6 +192,12 @@ class ToastNodeImpl extends LeafNode implements ToastNode {
   dismiss(id: string): this {
     const index = this._toasts.findIndex(t => t.id === id)
     if (index !== -1) {
+      // Clear any pending timeout for this toast
+      const timeoutId = this._timeouts.get(id)
+      if (timeoutId !== undefined) {
+        clearTimeout(timeoutId)
+        this._timeouts.delete(id)
+      }
       this._toasts.splice(index, 1)
       this.markDirty()
     }
@@ -196,10 +206,29 @@ class ToastNodeImpl extends LeafNode implements ToastNode {
 
   dismissAll(): this {
     if (this._toasts.length > 0) {
+      // Clear all pending timeouts
+      for (const timeoutId of this._timeouts.values()) {
+        clearTimeout(timeoutId)
+      }
+      this._timeouts.clear()
       this._toasts = []
       this.markDirty()
     }
     return this
+  }
+
+  /**
+   * Dispose of toast container and clear all pending timeouts.
+   */
+  override dispose(): void {
+    if (this._disposed) return
+    // Clear all pending timeouts
+    for (const timeoutId of this._timeouts.values()) {
+      clearTimeout(timeoutId)
+    }
+    this._timeouts.clear()
+    this._toasts = []
+    super.dispose()
   }
 
   // Get icon for toast type

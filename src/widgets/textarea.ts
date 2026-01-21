@@ -6,8 +6,75 @@
 import type { Node, Buffer, CellStyle, Dimension } from '../types'
 import { LeafNode } from './node'
 import { DEFAULT_FG, DEFAULT_BG } from '../utils/color'
-import { stringWidth, truncateToWidth } from '../utils/unicode'
+import { stringWidth, truncateToWidth, splitGraphemes } from '../utils/unicode'
 import { ATTR_DIM } from '../constants'
+
+// ============================================================
+// Grapheme-aware cursor utilities
+// ============================================================
+
+/**
+ * Get the string index for a grapheme index.
+ * This allows us to navigate by grapheme clusters (visible characters)
+ * rather than by UTF-16 code units.
+ */
+function graphemeIndexToStringIndex(line: string, graphemeIndex: number): number {
+  const graphemes = splitGraphemes(line)
+  let stringIndex = 0
+  const targetIndex = Math.min(graphemeIndex, graphemes.length)
+  for (let i = 0; i < targetIndex; i++) {
+    stringIndex += graphemes[i]!.length
+  }
+  return stringIndex
+}
+
+/**
+ * Get the grapheme index for a string index.
+ * @internal - kept for future use in selection handling
+ */
+function _stringIndexToGraphemeIndex(line: string, stringIndex: number): number {
+  const graphemes = splitGraphemes(line)
+  let currentStringIndex = 0
+  for (let i = 0; i < graphemes.length; i++) {
+    if (currentStringIndex >= stringIndex) {
+      return i
+    }
+    currentStringIndex += graphemes[i]!.length
+  }
+  return graphemes.length
+}
+// Re-export with underscore prefix to suppress unused warning
+void _stringIndexToGraphemeIndex
+
+/**
+ * Get the grapheme count of a line.
+ */
+function graphemeLength(line: string): number {
+  return splitGraphemes(line).length
+}
+
+/**
+ * Delete the grapheme at the given grapheme index.
+ */
+function deleteGraphemeAt(line: string, graphemeIndex: number): string {
+  const graphemes = splitGraphemes(line)
+  if (graphemeIndex < 0 || graphemeIndex >= graphemes.length) {
+    return line
+  }
+  graphemes.splice(graphemeIndex, 1)
+  return graphemes.join('')
+}
+
+/**
+ * Insert text at the given grapheme index.
+ */
+function insertAtGrapheme(line: string, graphemeIndex: number, text: string): string {
+  const graphemes = splitGraphemes(line)
+  const insertIndex = Math.min(graphemeIndex, graphemes.length)
+  const before = graphemes.slice(0, insertIndex).join('')
+  const after = graphemes.slice(insertIndex).join('')
+  return before + text + after
+}
 
 // ============================================================
 // Types
@@ -175,7 +242,19 @@ class TextareaNodeImpl extends LeafNode implements TextareaNode {
     return this
   }
 
+  /**
+   * Dispose of textarea and clear all handlers.
+   */
+  override dispose(): void {
+    if (this._disposed) return
+    this._onChangeHandlers = []
+    this._onFocusHandlers = []
+    this._onBlurHandlers = []
+    super.dispose()
+  }
+
   // Internal: Handle key input
+  // Uses grapheme-aware operations for proper Unicode support
   /** @internal */
   handleKey(key: string, _ctrl: boolean): void {
     if (!this._focused) return
@@ -187,7 +266,8 @@ class TextareaNodeImpl extends LeafNode implements TextareaNode {
         if (this._cursorCol > 0) {
           /* c8 ignore next */
           const line = lines[this._cursorLine] || ''
-          lines[this._cursorLine] = line.slice(0, this._cursorCol - 1) + line.slice(this._cursorCol)
+          // Delete the grapheme before cursor (not just one code unit)
+          lines[this._cursorLine] = deleteGraphemeAt(line, this._cursorCol - 1)
           this._cursorCol--
           this._value = lines.join('\n')
           this.emitChange()
@@ -195,7 +275,7 @@ class TextareaNodeImpl extends LeafNode implements TextareaNode {
           // Join with previous line
           /* c8 ignore next 3 */
           const prevLine = lines[this._cursorLine - 1] || ''
-          this._cursorCol = prevLine.length
+          this._cursorCol = graphemeLength(prevLine)
           lines[this._cursorLine - 1] = prevLine + (lines[this._cursorLine] || '')
           lines.splice(this._cursorLine, 1)
           this._cursorLine--
@@ -208,8 +288,10 @@ class TextareaNodeImpl extends LeafNode implements TextareaNode {
         if (this._value.length < this._maxLength) {
           /* c8 ignore next */
           const line = lines[this._cursorLine] || ''
-          lines[this._cursorLine] = line.slice(0, this._cursorCol)
-          lines.splice(this._cursorLine + 1, 0, line.slice(this._cursorCol))
+          // Split at grapheme boundary
+          const stringIndex = graphemeIndexToStringIndex(line, this._cursorCol)
+          lines[this._cursorLine] = line.slice(0, stringIndex)
+          lines.splice(this._cursorLine + 1, 0, line.slice(stringIndex))
           this._cursorLine++
           this._cursorCol = 0
           this._value = lines.join('\n')
@@ -221,7 +303,8 @@ class TextareaNodeImpl extends LeafNode implements TextareaNode {
         if (this._cursorLine > 0) {
           this._cursorLine--
           /* c8 ignore next */
-          this._cursorCol = Math.min(this._cursorCol, (lines[this._cursorLine] || '').length)
+          const prevLine = lines[this._cursorLine] || ''
+          this._cursorCol = Math.min(this._cursorCol, graphemeLength(prevLine))
           this.markDirty()
         }
         break
@@ -230,7 +313,8 @@ class TextareaNodeImpl extends LeafNode implements TextareaNode {
         if (this._cursorLine < lines.length - 1) {
           this._cursorLine++
           /* c8 ignore next */
-          this._cursorCol = Math.min(this._cursorCol, (lines[this._cursorLine] || '').length)
+          const nextLine = lines[this._cursorLine] || ''
+          this._cursorCol = Math.min(this._cursorCol, graphemeLength(nextLine))
           this.markDirty()
         }
         break
@@ -242,14 +326,16 @@ class TextareaNodeImpl extends LeafNode implements TextareaNode {
         } else if (this._cursorLine > 0) {
           this._cursorLine--
           /* c8 ignore next */
-          this._cursorCol = (lines[this._cursorLine] || '').length
+          const prevLine = lines[this._cursorLine] || ''
+          this._cursorCol = graphemeLength(prevLine)
           this.markDirty()
         }
         break
 
       case 'right':
         /* c8 ignore next */
-        if (this._cursorCol < (lines[this._cursorLine] || '').length) {
+        const currentLine = lines[this._cursorLine] || ''
+        if (this._cursorCol < graphemeLength(currentLine)) {
           this._cursorCol++
           this.markDirty()
         } else if (this._cursorLine < lines.length - 1) {
@@ -266,17 +352,18 @@ class TextareaNodeImpl extends LeafNode implements TextareaNode {
 
       case 'end':
         /* c8 ignore next */
-        this._cursorCol = (lines[this._cursorLine] || '').length
+        this._cursorCol = graphemeLength(lines[this._cursorLine] || '')
         this.markDirty()
         break
 
       default:
-        // Insert printable character
-        if (key.length === 1 && this._value.length < this._maxLength) {
+        // Insert printable character (can be multi-codepoint grapheme)
+        if (key.length >= 1 && this._value.length < this._maxLength) {
           const line = lines[this._cursorLine] || ''
-          lines[this._cursorLine] =
-            line.slice(0, this._cursorCol) + key + line.slice(this._cursorCol)
-          this._cursorCol++
+          // Insert at grapheme boundary, not string index
+          lines[this._cursorLine] = insertAtGrapheme(line, this._cursorCol, key)
+          // Move cursor by grapheme count of inserted text
+          this._cursorCol += splitGraphemes(key).length
           this._value = lines.join('\n')
           this.emitChange()
         }

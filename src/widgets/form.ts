@@ -734,6 +734,22 @@ class FormNodeImpl extends ContainerNode implements FormNode {
     return this
   }
 
+  /**
+   * Dispose of form and clear all handlers.
+   */
+  override dispose(): void {
+    if (this._disposed) return
+    this._fields = []
+    this._fieldStates.clear()
+    this._onChangeHandlers = []
+    this._onSubmitHandlers = []
+    this._onCancelHandlers = []
+    this._onValidationErrorHandlers = []
+    this._onFocusHandlers = []
+    this._onBlurHandlers = []
+    super.dispose()
+  }
+
   // Internal: Handle key input
   /** @internal */
   handleKey(key: string, ctrl: boolean): boolean {

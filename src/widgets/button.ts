@@ -181,6 +181,17 @@ class ButtonNodeImpl extends LeafNode implements ButtonNode {
     return this
   }
 
+  /**
+   * Dispose of button and clear all handlers.
+   */
+  override dispose(): void {
+    if (this._disposed) return
+    this._onClickHandlers = []
+    this._onFocusHandlers = []
+    this._onBlurHandlers = []
+    super.dispose()
+  }
+
   // Focus control
   focus(): this {
     if (!this._disabled && !this._focused) {

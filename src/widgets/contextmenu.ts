@@ -216,6 +216,17 @@ class ContextMenuNodeImpl extends LeafNode implements ContextMenuNode {
     return this
   }
 
+  /**
+   * Dispose of context menu and clear all handlers.
+   */
+  override dispose(): void {
+    if (this._disposed) return
+    this._items = []
+    this._onSelectHandlers = []
+    this._onCloseHandlers = []
+    super.dispose()
+  }
+
   // Internal helpers
   private findNextSelectable(startIndex: number, direction: 1 | -1): number {
     let index = startIndex

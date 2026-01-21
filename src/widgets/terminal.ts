@@ -630,6 +630,17 @@ class TerminalNodeImpl extends LeafNode implements TerminalNode {
       }
     }
   }
+
+  /**
+   * Dispose of terminal and clear all handlers.
+   */
+  override dispose(): void {
+    if (this._disposed) return
+    this._lines = []
+    this._onSubmitHandlers = []
+    this._onInputHandlers = []
+    super.dispose()
+  }
 }
 
 export function terminal(props?: TerminalProps): TerminalNode {

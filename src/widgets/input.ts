@@ -184,6 +184,18 @@ class InputNodeImpl extends LeafNode implements InputNode {
     return this
   }
 
+  /**
+   * Dispose of input and clear all handlers.
+   */
+  override dispose(): void {
+    if (this._disposed) return
+    this._onChangeHandlers = []
+    this._onSubmitHandlers = []
+    this._onFocusHandlers = []
+    this._onBlurHandlers = []
+    super.dispose()
+  }
+
   // Internal: Handle key input
   /** @internal */
   handleKey(key: string, ctrl: boolean): void {
@@ -191,6 +203,109 @@ class InputNodeImpl extends LeafNode implements InputNode {
 
     if (ctrl) {
       // Handle ctrl shortcuts
+      switch (key) {
+        case 'a':
+          // Select all - move cursor to end (visual selection not implemented yet)
+          this._cursorPosition = this._value.length
+          this.markDirty()
+          break
+
+        case 'u':
+          // Clear line from cursor to start (like bash)
+          if (this._cursorPosition > 0) {
+            this._value = this._value.slice(this._cursorPosition)
+            this._cursorPosition = 0
+            this.emitChange()
+          }
+          break
+
+        case 'k':
+          // Clear line from cursor to end (like bash)
+          if (this._cursorPosition < this._value.length) {
+            this._value = this._value.slice(0, this._cursorPosition)
+            this.emitChange()
+          }
+          break
+
+        case 'w':
+        case 'backspace':
+          // Delete word backward
+          if (this._cursorPosition > 0) {
+            const beforeCursor = this._value.slice(0, this._cursorPosition)
+            // Find word boundary (skip trailing spaces, then delete word)
+            const trimmed = beforeCursor.trimEnd()
+            const lastSpace = trimmed.lastIndexOf(' ')
+            const newPos = lastSpace === -1 ? 0 : lastSpace + 1
+            this._value = this._value.slice(0, newPos) + this._value.slice(this._cursorPosition)
+            this._cursorPosition = newPos
+            this.emitChange()
+          }
+          break
+
+        case 'left':
+          // Move cursor one word left
+          if (this._cursorPosition > 0) {
+            const beforeCursor = this._value.slice(0, this._cursorPosition)
+            const trimmed = beforeCursor.trimEnd()
+            const lastSpace = trimmed.lastIndexOf(' ')
+            this._cursorPosition = lastSpace === -1 ? 0 : lastSpace + 1
+            this.markDirty()
+          }
+          break
+
+        case 'right':
+          // Move cursor one word right
+          if (this._cursorPosition < this._value.length) {
+            const afterCursor = this._value.slice(this._cursorPosition)
+            // Skip current word, then skip spaces
+            const firstSpace = afterCursor.search(/\s/)
+            if (firstSpace === -1) {
+              this._cursorPosition = this._value.length
+            } else {
+              const afterSpace = afterCursor.slice(firstSpace).search(/\S/)
+              if (afterSpace === -1) {
+                this._cursorPosition = this._value.length
+              } else {
+                this._cursorPosition += firstSpace + afterSpace
+              }
+            }
+            this.markDirty()
+          }
+          break
+
+        case 'home':
+        case 'e':
+          // Go to start of line
+          this._cursorPosition = 0
+          this.markDirty()
+          break
+
+        case 'end':
+        case 'f':
+          // Go to end of line (Ctrl+E in bash, but we use Ctrl+End too)
+          this._cursorPosition = this._value.length
+          this.markDirty()
+          break
+
+        case 'd':
+          // Delete character at cursor (like Delete key)
+          if (this._cursorPosition < this._value.length) {
+            this._value =
+              this._value.slice(0, this._cursorPosition) + this._value.slice(this._cursorPosition + 1)
+            this.emitChange()
+          }
+          break
+
+        case 'h':
+          // Delete character before cursor (like Backspace)
+          if (this._cursorPosition > 0) {
+            this._value =
+              this._value.slice(0, this._cursorPosition - 1) + this._value.slice(this._cursorPosition)
+            this._cursorPosition--
+            this.emitChange()
+          }
+          break
+      }
       return
     }
 

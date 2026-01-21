@@ -336,6 +336,23 @@ class SplitPaneNodeImpl extends ContainerNode implements SplitPaneNode {
       }
     }
   }
+
+  /**
+   * Dispose of splitpane and clear all handlers.
+   */
+  override dispose(): void {
+    if (this._disposed) return
+    if (this._firstPane instanceof BaseNode) {
+      this._firstPane._parent = null
+    }
+    if (this._secondPane instanceof BaseNode) {
+      this._secondPane._parent = null
+    }
+    this._firstPane = null
+    this._secondPane = null
+    this._onResizeHandlers = []
+    super.dispose()
+  }
 }
 
 // ============================================================

@@ -247,6 +247,17 @@ class BreadcrumbNodeImpl extends LeafNode implements BreadcrumbNode {
     return this
   }
 
+  /**
+   * Dispose of breadcrumb and clear all handlers.
+   */
+  override dispose(): void {
+    if (this._disposed) return
+    this._items = []
+    this._onNavigateHandlers = []
+    this._onCollapsedClickHandlers = []
+    super.dispose()
+  }
+
   // Focus
   focus(): this {
     this._isFocused = true

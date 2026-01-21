@@ -362,6 +362,19 @@ class HeatmapNodeImpl extends LeafNode implements HeatmapNode {
     return this
   }
 
+  /**
+   * Dispose of heatmap and clear all handlers.
+   */
+  override dispose(): void {
+    if (this._disposed) return
+    this._data = []
+    this._rowLabels = []
+    this._columnLabels = []
+    this._customColors = []
+    this._onSelectHandlers = []
+    super.dispose()
+  }
+
   // Keyboard handling
   /** @internal */
   handleKey(key: string): boolean {

@@ -443,6 +443,19 @@ class CodeViewerNodeImpl extends LeafNode implements CodeViewerNode {
     return this
   }
 
+  /**
+   * Dispose of codeviewer and clear all handlers.
+   */
+  override dispose(): void {
+    if (this._disposed) return
+    this._lines = []
+    this._highlightLines.clear()
+    this._selectedLines.clear()
+    this._onLineSelectHandlers = []
+    this._onScrollHandlers = []
+    super.dispose()
+  }
+
   // Focus
   focus(): this {
     this._isFocused = true

@@ -878,6 +878,18 @@ class JsonViewerNodeImpl extends LeafNode implements JsonViewerNode {
         return defaultFg
     }
   }
+
+  /**
+   * Dispose of JSON viewer and clear all handlers.
+   */
+  override dispose(): void {
+    if (this._disposed) return
+    this._root = null
+    this._flatNodes = []
+    this._matches = []
+    this._onSelectHandlers = []
+    super.dispose()
+  }
 }
 
 // ============================================================

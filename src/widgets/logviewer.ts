@@ -691,6 +691,18 @@ class LogViewerNodeImpl extends LeafNode implements LogViewerNode {
       buffer.set(bounds.x + bounds.width - 1, indicatorY, { char: '\u2588', fg, bg, attrs: ATTR_DIM })
     }
   }
+
+  /**
+   * Dispose of log viewer and clear all handlers.
+   */
+  override dispose(): void {
+    if (this._disposed) return
+    this._entries = []
+    this._filteredEntries = []
+    this._onEntrySelectHandlers = []
+    this._onFilterHandlers = []
+    super.dispose()
+  }
 }
 
 // ============================================================

@@ -249,6 +249,20 @@ class TreeWidgetNodeImpl<T = unknown> extends LeafNode implements TreeWidgetNode
     return this
   }
 
+  /**
+   * Dispose of tree and clear all handlers.
+   */
+  override dispose(): void {
+    if (this._disposed) return
+    this._data = []
+    this._expandedPaths.clear()
+    this._onSelectHandlers = []
+    this._onToggleHandlers = []
+    this._onFocusHandlers = []
+    this._onBlurHandlers = []
+    super.dispose()
+  }
+
   // Internal helpers
   private getNodeAtPath(path: number[]): TreeNodeData<T> | undefined {
     let nodes = this._data

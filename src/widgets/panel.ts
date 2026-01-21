@@ -535,6 +535,18 @@ class PanelNodeImpl extends ContainerNode implements PanelNode {
 
     buffer.write(footerStartX, y, footerText, { fg, bg, attrs: ATTR_DIM })
   }
+
+  /**
+   * Dispose of panel and clear all handlers.
+   */
+  override dispose(): void {
+    if (this._disposed) return
+    this._actions = []
+    this._contentNode = null
+    this._onToggleHandlers = []
+    this._onActionHandlers = []
+    super.dispose()
+  }
 }
 
 // ============================================================

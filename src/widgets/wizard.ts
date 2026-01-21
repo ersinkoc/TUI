@@ -600,6 +600,24 @@ class WizardNodeImpl extends ContainerNode implements WizardNode {
       default: return ATTR_DIM
     }
   }
+
+  /**
+   * Dispose of wizard and clear all handlers.
+   */
+  override dispose(): void {
+    if (this._disposed) return
+    for (const step of this._steps) {
+      if (step.content instanceof BaseNode) {
+        step.content._parent = null
+      }
+    }
+    this._steps = []
+    this._stepStatuses.clear()
+    this._onStepChangeHandlers = []
+    this._onCompleteHandlers = []
+    this._onValidationErrorHandlers = []
+    super.dispose()
+  }
 }
 
 // ============================================================
