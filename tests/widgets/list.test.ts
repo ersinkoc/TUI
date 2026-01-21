@@ -856,4 +856,261 @@ describe('List Widget', () => {
       expect(l.selectedIds.size).toBe(0)
     })
   })
+
+  describe('handler cleanup', () => {
+    it('should remove onSelect handler with offSelect', () => {
+      const handler = vi.fn()
+      const l = list()
+        .items([{ id: '1', label: 'A' }])
+        .onSelect(handler)
+
+      l.selectIndex(0)
+      expect(handler).toHaveBeenCalledTimes(1)
+
+      l.offSelect(handler)
+      l.selectIndex(0)
+      expect(handler).toHaveBeenCalledTimes(1) // Should not increase
+    })
+
+    it('should remove onChange handler with offChange', () => {
+      const handler = vi.fn()
+      const l = list()
+        .multiSelect(true)
+        .items([{ id: '1', label: 'A' }])
+        .onChange(handler)
+
+      l.toggleSelection()
+      expect(handler).toHaveBeenCalledTimes(1)
+
+      l.offChange(handler)
+      l.toggleSelection()
+      expect(handler).toHaveBeenCalledTimes(1) // Should not increase
+    })
+
+    it('should remove onFocus handler with offFocus', () => {
+      const handler = vi.fn()
+      const l = list().onFocus(handler)
+
+      l.focus()
+      expect(handler).toHaveBeenCalledTimes(1)
+
+      l.offFocus(handler)
+      l.focus()
+      expect(handler).toHaveBeenCalledTimes(1) // Should not increase
+    })
+
+    it('should remove onBlur handler with offBlur', () => {
+      const handler = vi.fn()
+      const l = list().onBlur(handler)
+
+      l.focus()
+      l.blur()
+      expect(handler).toHaveBeenCalledTimes(1)
+
+      l.offBlur(handler)
+      l.focus()
+      l.blur()
+      expect(handler).toHaveBeenCalledTimes(1) // Should not increase
+    })
+
+    it('should clear all handlers with clearHandlers', () => {
+      const selectHandler = vi.fn()
+      const changeHandler = vi.fn()
+      const focusHandler = vi.fn()
+      const blurHandler = vi.fn()
+
+      const l = list()
+        .multiSelect(true)
+        .items([{ id: '1', label: 'A' }])
+        .onSelect(selectHandler)
+        .onChange(changeHandler)
+        .onFocus(focusHandler)
+        .onBlur(blurHandler)
+
+      l.clearHandlers()
+
+      l.selectIndex(0)
+      l.toggleSelection()
+      l.focus()
+      l.blur()
+
+      expect(selectHandler).not.toHaveBeenCalled()
+      expect(changeHandler).not.toHaveBeenCalled()
+      expect(focusHandler).not.toHaveBeenCalled()
+      expect(blurHandler).not.toHaveBeenCalled()
+    })
+
+    it('should clear handlers on dispose', () => {
+      const selectHandler = vi.fn()
+      const changeHandler = vi.fn()
+      const focusHandler = vi.fn()
+      const blurHandler = vi.fn()
+
+      const l = list()
+        .multiSelect(true)
+        .items([{ id: '1', label: 'A' }])
+        .onSelect(selectHandler)
+        .onChange(changeHandler)
+        .onFocus(focusHandler)
+        .onBlur(blurHandler)
+
+      l.dispose()
+
+      // Handlers should not fire after dispose
+      l.selectIndex(0)
+      l.toggleSelection()
+      l.focus()
+      l.blur()
+
+      expect(selectHandler).not.toHaveBeenCalled()
+      expect(changeHandler).not.toHaveBeenCalled()
+      expect(focusHandler).not.toHaveBeenCalled()
+      expect(blurHandler).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('deselectAll edge cases', () => {
+    it('should not emit change when nothing is selected', () => {
+      const handler = vi.fn()
+      const l = list()
+        .multiSelect(true)
+        .items([{ id: '1', label: 'A' }])
+        .onChange(handler)
+
+      l.deselectAll()
+      expect(handler).not.toHaveBeenCalled()
+    })
+
+    it('should clear all selections and emit change', () => {
+      const handler = vi.fn()
+      const l = list()
+        .multiSelect(true)
+        .items([
+          { id: '1', label: 'A' },
+          { id: '2', label: 'B' }
+        ])
+        .onChange(handler)
+
+      l.selectAll()
+      expect(l.selectedIds.size).toBe(2)
+
+      l.deselectAll()
+      expect(l.selectedIds.size).toBe(0)
+      expect(handler).toHaveBeenCalled()
+    })
+  })
+
+  describe('focus edge cases', () => {
+    it('should not emit focus when already focused', () => {
+      const handler = vi.fn()
+      const l = list().onFocus(handler)
+
+      l.focus()
+      expect(handler).toHaveBeenCalledTimes(1)
+
+      l.focus()
+      expect(handler).toHaveBeenCalledTimes(1) // Should not increase
+    })
+
+    it('should not focus when disposed', () => {
+      const handler = vi.fn()
+      const l = list()
+        .items([{ id: '1', label: 'A' }])
+        .onFocus(handler)
+
+      l.dispose()
+      l.focus()
+
+      expect(l.isFocused).toBe(false)
+      expect(handler).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('blur edge cases', () => {
+    it('should not emit blur when already blurred', () => {
+      const handler = vi.fn()
+      const l = list().onBlur(handler)
+
+      l.blur() // Already blurred
+      expect(handler).not.toHaveBeenCalled()
+    })
+
+    it('should emit blur when focused', () => {
+      const handler = vi.fn()
+      const l = list().onBlur(handler)
+
+      l.focus()
+      l.blur()
+      expect(handler).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('keyboard handling edge cases', () => {
+    it('should return false for "a" key without ctrl modifier', () => {
+      const l = list()
+        .items([{ id: '1', label: 'A' }])
+        .focus()
+
+      const result = (l as any).handleKey('a', false)
+      expect(result).toBe(false)
+    })
+
+    it('should return false for "space" key in single select mode', () => {
+      const l = list()
+        .multiSelect(false)
+        .items([{ id: '1', label: 'A' }])
+        .focus()
+
+      const result = (l as any).handleKey('space', false)
+      expect(result).toBe(false)
+    })
+
+    it('should return true for "space" key in multiSelect mode', () => {
+      const l = list()
+        .multiSelect(true)
+        .items([{ id: '1', label: 'A' }])
+        .focus()
+
+      const result = (l as any).handleKey('space', false)
+      expect(result).toBe(true)
+    })
+  })
+
+  describe('mouse handling edge cases', () => {
+    it('should return false when width is zero', () => {
+      const l = list()
+        .items([{ id: '1', label: 'A' }])
+      ;(l as any)._bounds = { x: 0, y: 0, width: 0, height: 10 }
+
+      const result = (l as any).handleMouse(5, 0, 'press')
+      expect(result).toBe(false)
+    })
+
+    it('should return false when height is zero', () => {
+      const l = list()
+        .items([{ id: '1', label: 'A' }])
+      ;(l as any)._bounds = { x: 0, y: 0, width: 40, height: 0 }
+
+      const result = (l as any).handleMouse(5, 0, 'press')
+      expect(result).toBe(false)
+    })
+
+    it('should return false when width is negative', () => {
+      const l = list()
+        .items([{ id: '1', label: 'A' }])
+      ;(l as any)._bounds = { x: 0, y: 0, width: -10, height: 10 }
+
+      const result = (l as any).handleMouse(5, 0, 'press')
+      expect(result).toBe(false)
+    })
+
+    it('should return false when height is negative', () => {
+      const l = list()
+        .items([{ id: '1', label: 'A' }])
+      ;(l as any)._bounds = { x: 0, y: 0, width: 40, height: -10 }
+
+      const result = (l as any).handleMouse(5, 0, 'press')
+      expect(result).toBe(false)
+    })
+  })
 })

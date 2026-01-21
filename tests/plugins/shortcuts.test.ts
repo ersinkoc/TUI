@@ -583,6 +583,574 @@ describe('shortcutsPlugin', () => {
       expect(byCategory.get('Application')).toHaveLength(1)
     })
   })
+
+  describe('vim mode key handling', () => {
+    it('should switch to normal mode on escape in vim mode', () => {
+      const plugin = shortcutsPlugin({ vimMode: true })
+      plugin.install(app)
+
+      app.shortcuts!.setVimMode('insert')
+      expect(app.shortcuts!.getVimMode()).toBe('insert')
+
+      app.emit('key', createKeyEvent('escape'))
+      expect(app.shortcuts!.getVimMode()).toBe('normal')
+      expect(app.markDirty).toHaveBeenCalled()
+    })
+
+    it('should switch to insert mode on i key in normal mode', () => {
+      const plugin = shortcutsPlugin({ vimMode: true })
+      plugin.install(app)
+
+      expect(app.shortcuts!.getVimMode()).toBe('normal')
+
+      app.emit('key', createKeyEvent('i'))
+      expect(app.shortcuts!.getVimMode()).toBe('insert')
+      expect(app.markDirty).toHaveBeenCalled()
+    })
+
+    it('should switch to visual mode on v key in normal mode', () => {
+      const plugin = shortcutsPlugin({ vimMode: true })
+      plugin.install(app)
+
+      expect(app.shortcuts!.getVimMode()).toBe('normal')
+
+      app.emit('key', createKeyEvent('v'))
+      expect(app.shortcuts!.getVimMode()).toBe('visual')
+      expect(app.markDirty).toHaveBeenCalled()
+    })
+
+    it('should pass through keys in insert mode', () => {
+      const plugin = shortcutsPlugin({ vimMode: true })
+      plugin.install(app)
+
+      app.shortcuts!.setVimMode('insert')
+
+      const handler = vi.fn()
+      app.shortcuts!.register({
+        id: 'test',
+        keys: 'a',
+        handler,
+        description: 'Test'
+      })
+
+      app.emit('key', createKeyEvent('a'))
+      // In insert mode, shortcuts don't execute, but key event is consumed
+      expect(handler).not.toHaveBeenCalled()
+    })
+
+    it('should not trigger shortcuts in non-normal vim mode', () => {
+      const plugin = shortcutsPlugin({ vimMode: true })
+      plugin.install(app)
+
+      app.shortcuts!.setVimMode('insert')
+
+      const handler = vi.fn()
+      app.shortcuts!.register({
+        id: 'test',
+        keys: 'ctrl+s',
+        handler,
+        description: 'Test'
+      })
+
+      // In insert mode, normal shortcuts shouldn't trigger
+      const result = app.shortcuts!.execute('test')
+      expect(result).toBe(false)
+    })
+  })
+
+  describe('key sequences and chords', () => {
+    it('should handle multi-key sequences', () => {
+      const plugin = shortcutsPlugin()
+      plugin.install(app)
+
+      const handler = vi.fn()
+      app.shortcuts!.register({
+        id: 'gg',
+        keys: 'g g',
+        handler,
+        description: 'Go to top'
+      })
+
+      // First 'g' should be consumed (chord in progress)
+      app.emit('key', createKeyEvent('g'))
+
+      // Second 'g' should execute
+      app.emit('key', createKeyEvent('g'))
+      expect(handler).toHaveBeenCalled()
+    })
+
+    it('should handle chord timeout', async () => {
+      const plugin = shortcutsPlugin({ chordTimeout: 100 })
+      plugin.install(app)
+
+      const handler = vi.fn()
+      app.shortcuts!.register({
+        id: 'gg',
+        keys: 'g g',
+        handler,
+        description: 'Go to top'
+      })
+
+      // First 'g'
+      app.emit('key', createKeyEvent('g'))
+
+      // Wait for timeout
+      await new Promise(resolve => setTimeout(resolve, 150))
+
+      // Second 'g' after timeout should not execute chord
+      app.emit('key', createKeyEvent('g'))
+      expect(handler).not.toHaveBeenCalled()
+    })
+
+    it('should handle leader key shortcuts', () => {
+      const plugin = shortcutsPlugin({ vimMode: true, leaderKey: 'space' })
+      plugin.install(app)
+
+      const handler = vi.fn()
+      app.shortcuts!.register({
+        id: 'leader-w',
+        keys: '<leader> w',
+        handler,
+        description: 'Save',
+        vimOnly: true
+      })
+
+      // Press space then w
+      app.emit('key', createKeyEvent('space'))
+      app.emit('key', createKeyEvent('w'))
+      expect(handler).toHaveBeenCalled()
+    })
+  })
+
+  describe('priority handling', () => {
+    it('should execute higher priority shortcut in conflict', () => {
+      const plugin = shortcutsPlugin()
+      plugin.install(app)
+
+      const highHandler = vi.fn()
+      const lowHandler = vi.fn()
+
+      app.shortcuts!.register({
+        id: 'low',
+        keys: 'ctrl+s',
+        handler: lowHandler,
+        description: 'Low priority',
+        priority: 'low'
+      })
+
+      app.shortcuts!.register({
+        id: 'high',
+        keys: 'ctrl+s',
+        handler: highHandler,
+        description: 'High priority',
+        priority: 'high'
+      })
+
+      app.shortcuts!.simulate('ctrl+s')
+      expect(highHandler).toHaveBeenCalled()
+      expect(lowHandler).not.toHaveBeenCalled()
+    })
+
+    it('should respect critical priority', () => {
+      const plugin = shortcutsPlugin()
+      plugin.install(app)
+
+      const criticalHandler = vi.fn()
+      const normalHandler = vi.fn()
+
+      app.shortcuts!.register({
+        id: 'critical',
+        keys: 'ctrl+s',
+        handler: criticalHandler,
+        description: 'Critical',
+        priority: 'critical'
+      })
+
+      app.shortcuts!.register({
+        id: 'normal',
+        keys: 'ctrl+s',
+        handler: normalHandler,
+        description: 'Normal'
+      })
+
+      app.shortcuts!.simulate('ctrl+s')
+      expect(criticalHandler).toHaveBeenCalled()
+      expect(normalHandler).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('context edge cases', () => {
+    it('should handle function context', () => {
+      const plugin = shortcutsPlugin()
+      plugin.install(app)
+
+      const handler = vi.fn()
+      app.shortcuts!.register({
+        id: 'test',
+        keys: 'ctrl+s',
+        handler,
+        description: 'Test',
+        context: (a) => a === app
+      })
+
+      const result = app.shortcuts!.execute('test')
+      expect(result).toBe(true)
+      expect(handler).toHaveBeenCalled()
+    })
+
+    it('should handle array context', () => {
+      const plugin = shortcutsPlugin()
+      plugin.install(app)
+
+      const handler = vi.fn()
+      app.shortcuts!.register({
+        id: 'test',
+        keys: 'ctrl+s',
+        handler,
+        description: 'Test',
+        context: ['editor', 'viewer']
+      })
+
+      app.shortcuts!.setContext(['editor'])
+      const result1 = app.shortcuts!.execute('test')
+      expect(result1).toBe(true)
+
+      app.shortcuts!.clearContext()
+      const result2 = app.shortcuts!.execute('test')
+      expect(result2).toBe(false)
+    })
+
+    it('should not execute when no matching context', () => {
+      const plugin = shortcutsPlugin()
+      plugin.install(app)
+
+      const handler = vi.fn()
+      app.shortcuts!.register({
+        id: 'test',
+        keys: 'ctrl+s',
+        handler,
+        description: 'Test',
+        context: 'editor'
+      })
+
+      app.shortcuts!.setContext('viewer')
+      const result = app.shortcuts!.execute('test')
+      expect(result).toBe(false)
+      expect(handler).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('handler return values', () => {
+    it('should consume event when handler returns true', () => {
+      const plugin = shortcutsPlugin()
+      plugin.install(app)
+
+      app.shortcuts!.register({
+        id: 'test',
+        keys: 'ctrl+s',
+        handler: () => true,
+        description: 'Test'
+      })
+
+      // Should not throw, event is consumed
+      expect(() => app.shortcuts!.simulate('ctrl+s')).not.toThrow()
+    })
+
+    it('should consume event when handler returns undefined', () => {
+      const plugin = shortcutsPlugin()
+      plugin.install(app)
+
+      app.shortcuts!.register({
+        id: 'test',
+        keys: 'ctrl+s',
+        handler: () => undefined,
+        description: 'Test'
+      })
+
+      // Should not throw, undefined is treated as true (consume)
+      expect(() => app.shortcuts!.simulate('ctrl+s')).not.toThrow()
+    })
+
+    it('should not consume event when handler returns false', () => {
+      const plugin = shortcutsPlugin()
+      plugin.install(app)
+
+      app.shortcuts!.register({
+        id: 'test',
+        keys: 'ctrl+s',
+        handler: () => false,
+        description: 'Test'
+      })
+
+      // Handler returning false means don't consume
+      const result = app.shortcuts!.simulate('ctrl+s')
+      expect(result).toBe(false)
+    })
+  })
+
+  describe('key normalization', () => {
+    it('should normalize key order with modifiers', () => {
+      const plugin = shortcutsPlugin()
+      plugin.install(app)
+
+      const handler = vi.fn()
+      app.shortcuts!.register({
+        id: 'test',
+        keys: 'ctrl+shift+s',
+        handler,
+        description: 'Test'
+      })
+
+      app.shortcuts!.simulate('shift+ctrl+s')
+      expect(handler).toHaveBeenCalled()
+    })
+  })
+
+  describe('shift key handling', () => {
+    it('should handle explicit shift+g shortcut', () => {
+      const plugin = shortcutsPlugin()
+      plugin.install(app)
+
+      const handler = vi.fn()
+      // Use explicit shift+g which should match 'G' with shift
+      app.shortcuts!.register({
+        id: 'test',
+        keys: 'g',
+        handler,
+        description: 'Test'
+      })
+
+      // When G is pressed with shift, it matches 'g' shortcut
+      app.emit('key', createKeyEvent('G', { shift: true }))
+      // In the implementation, 'G' with shift=true becomes 'g' key
+      // because uppercase letters are converted to lowercase
+      expect(handler).toHaveBeenCalled()
+    })
+
+    it('should handle multi-key sequence with shift modifier', () => {
+      const plugin = shortcutsPlugin()
+      plugin.install(app)
+
+      const handler = vi.fn()
+      app.shortcuts!.register({
+        id: 'test',
+        keys: 'shift+x g',
+        handler,
+        description: 'Test'
+      })
+
+      // First shift+x (special key with shift)
+      app.emit('key', createKeyEvent('x', { shift: true }))
+      // Second g
+      app.emit('key', createKeyEvent('g'))
+      expect(handler).toHaveBeenCalled()
+    })
+  })
+
+  describe('help text with vim mode', () => {
+    it('should include vim mode in help text when enabled', () => {
+      const plugin = shortcutsPlugin({ vimMode: true })
+      plugin.install(app)
+
+      const helpText = app.shortcuts!.getHelpText()
+      expect(helpText).toContain('Vim mode: normal')
+    })
+
+    it('should include vim mode in markdown help text', () => {
+      const plugin = shortcutsPlugin({ vimMode: true })
+      plugin.install(app)
+
+      const helpText = app.shortcuts!.getHelpText({ markdown: true })
+      expect(helpText).toContain('*Vim mode: normal*')
+    })
+
+    it('should show current vim mode in help text', () => {
+      const plugin = shortcutsPlugin({ vimMode: true })
+      plugin.install(app)
+
+      app.shortcuts!.setVimMode('insert')
+      const helpText = app.shortcuts!.getHelpText()
+      expect(helpText).toContain('Vim mode: insert')
+    })
+  })
+
+  describe('multi-key shortcuts with array', () => {
+    it('should match any key in array', () => {
+      const plugin = shortcutsPlugin()
+      plugin.install(app)
+
+      const handler = vi.fn()
+      app.shortcuts!.register({
+        id: 'save',
+        keys: ['ctrl+s', 'ctrl+shift+s'],
+        handler,
+        description: 'Save'
+      })
+
+      app.shortcuts!.simulate('ctrl+s')
+      expect(handler).toHaveBeenCalledTimes(1)
+
+      app.shortcuts!.simulate('ctrl+shift+s')
+      expect(handler).toHaveBeenCalledTimes(2)
+    })
+  })
+
+  describe('edge cases', () => {
+    it('should handle empty keys in registerMany', () => {
+      const plugin = shortcutsPlugin()
+      plugin.install(app)
+
+      expect(() => app.shortcuts!.registerMany([])).not.toThrow()
+    })
+
+    it('should handle unregistering non-existent shortcut', () => {
+      const plugin = shortcutsPlugin()
+      plugin.install(app)
+
+      expect(() => app.shortcuts!.unregister('nonexistent')).not.toThrow()
+    })
+
+    it('should handle enabling non-existent shortcut', () => {
+      const plugin = shortcutsPlugin()
+      plugin.install(app)
+
+      expect(() => app.shortcuts!.enable('nonexistent')).not.toThrow()
+    })
+
+    it('should handle disabling non-existent shortcut', () => {
+      const plugin = shortcutsPlugin()
+      plugin.install(app)
+
+      expect(() => app.shortcuts!.disable('nonexistent')).not.toThrow()
+    })
+
+    it('should handle very long chord sequences', () => {
+      const plugin = shortcutsPlugin()
+      plugin.install(app)
+
+      const handler = vi.fn()
+      app.shortcuts!.register({
+        id: 'test',
+        keys: 'a b c d e f',
+        handler,
+        description: 'Long chord'
+      })
+
+      // Build the chord
+      app.emit('key', createKeyEvent('a'))
+      app.emit('key', createKeyEvent('b'))
+      app.emit('key', createKeyEvent('c'))
+      app.emit('key', createKeyEvent('d'))
+      app.emit('key', createKeyEvent('e'))
+      app.emit('key', createKeyEvent('f'))
+
+      expect(handler).toHaveBeenCalled()
+    })
+
+    it('should handle chords with modifiers', () => {
+      const plugin = shortcutsPlugin()
+      plugin.install(app)
+
+      const handler = vi.fn()
+      app.shortcuts!.register({
+        id: 'test',
+        keys: 'ctrl+k ctrl+c',
+        handler,
+        description: 'Chord with modifiers'
+      })
+
+      // Build the chord
+      app.emit('key', createKeyEvent('k', { ctrl: true }))
+      app.emit('key', createKeyEvent('c', { ctrl: true }))
+
+      expect(handler).toHaveBeenCalled()
+    })
+
+    it('should not execute disabled shortcuts via simulate', () => {
+      const plugin = shortcutsPlugin()
+      plugin.install(app)
+
+      const handler = vi.fn()
+      app.shortcuts!.register({
+        id: 'test',
+        keys: 'ctrl+s',
+        handler,
+        description: 'Test',
+        enabled: false
+      })
+
+      const result = app.shortcuts!.simulate('ctrl+s')
+      expect(result).toBe(false)
+      expect(handler).not.toHaveBeenCalled()
+    })
+
+    it('should handle shortcut without category', () => {
+      const plugin = shortcutsPlugin()
+      plugin.install(app)
+
+      app.shortcuts!.register({
+        id: 'test',
+        keys: 'ctrl+s',
+        handler: () => {},
+        description: 'Test'
+      })
+
+      const byCategory = app.shortcuts!.getShortcutsByCategory()
+      expect(byCategory.get('General')).toHaveLength(1)
+    })
+
+    it('should clear chord on exact match failure', () => {
+      const plugin = shortcutsPlugin()
+      plugin.install(app)
+
+      const handler = vi.fn()
+      app.shortcuts!.register({
+        id: 'test',
+        keys: 'a b',
+        handler,
+        description: 'Test chord'
+      })
+
+      // Press 'a' (partial match)
+      app.emit('key', createKeyEvent('a'))
+
+      // Press 'x' (no match, should clear chord)
+      // But 'x' doesn't match any shortcut either, so handler is not called
+      app.emit('key', createKeyEvent('x'))
+      expect(handler).not.toHaveBeenCalled()
+
+      // Next press of 'a' should start fresh chord
+      app.emit('key', createKeyEvent('a'))
+      app.emit('key', createKeyEvent('b'))
+      expect(handler).toHaveBeenCalled()
+    })
+
+    it('should handle chord timeout after partial match', () => {
+      const plugin = shortcutsPlugin({ chordTimeout: 50 })
+      plugin.install(app)
+
+      const handler = vi.fn()
+      app.shortcuts!.register({
+        id: 'test',
+        keys: 'a b',
+        handler,
+        description: 'Test chord'
+      })
+
+      // Press 'a'
+      app.emit('key', createKeyEvent('a'))
+
+      // Wait for timeout
+      return new Promise(resolve => {
+        setTimeout(() => {
+          // Press 'b' after timeout - should not execute chord
+          app.emit('key', createKeyEvent('b'))
+          expect(handler).not.toHaveBeenCalled()
+          resolve(null)
+        }, 100)
+      })
+    })
+  })
 })
 
 describe('preset shortcuts', () => {

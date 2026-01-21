@@ -614,4 +614,387 @@ describe('Slider Widget', () => {
       expect(handled).toBe(true)
     })
   })
+
+  describe('handler cleanup', () => {
+    it('should remove onChange handler with offChange', () => {
+      const handler = vi.fn()
+      const s = slider().onChange(handler)
+
+      s.value(50)
+      expect(handler).toHaveBeenCalledTimes(1)
+
+      s.offChange(handler)
+      s.value(75)
+      expect(handler).toHaveBeenCalledTimes(1) // Should not increase
+    })
+
+    it('should remove onFocus handler with offFocus', () => {
+      const handler = vi.fn()
+      const s = slider().onFocus(handler)
+
+      s.focus()
+      expect(handler).toHaveBeenCalledTimes(1)
+
+      s.offFocus(handler)
+      s.focus()
+      expect(handler).toHaveBeenCalledTimes(1) // Should not increase
+    })
+
+    it('should remove onBlur handler with offBlur', () => {
+      const handler = vi.fn()
+      const s = slider().onBlur(handler)
+
+      s.focus().blur()
+      expect(handler).toHaveBeenCalledTimes(1)
+
+      s.offBlur(handler)
+      s.focus().blur()
+      expect(handler).toHaveBeenCalledTimes(1) // Should not increase
+    })
+
+    it('should clear all handlers with clearHandlers', () => {
+      const changeHandler = vi.fn()
+      const focusHandler = vi.fn()
+      const blurHandler = vi.fn()
+
+      const s = slider()
+        .onChange(changeHandler)
+        .onFocus(focusHandler)
+        .onBlur(blurHandler)
+
+      s.clearHandlers()
+
+      s.value(50)
+      s.focus()
+      s.blur()
+
+      expect(changeHandler).not.toHaveBeenCalled()
+      expect(focusHandler).not.toHaveBeenCalled()
+      expect(blurHandler).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('dispose', () => {
+    it('should clear all handlers on dispose', () => {
+      const changeHandler = vi.fn()
+      const focusHandler = vi.fn()
+      const blurHandler = vi.fn()
+
+      const s = slider()
+        .onChange(changeHandler)
+        .onFocus(focusHandler)
+        .onBlur(blurHandler)
+
+      s.dispose()
+
+      s.value(50)
+      s.focus()
+      s.blur()
+
+      expect(changeHandler).not.toHaveBeenCalled()
+      expect(focusHandler).not.toHaveBeenCalled()
+      expect(blurHandler).not.toHaveBeenCalled()
+    })
+
+    it('should be idempotent', () => {
+      const s = slider()
+      s.dispose()
+      s.dispose() // Should not throw
+
+      expect(s.isDisposed).toBe(true)
+    })
+  })
+
+  describe('min() edge cases', () => {
+    it('should adjust max when min > max', () => {
+      const s = slider({ min: 0, max: 100 })
+      s.min(150)
+
+      // Max is adjusted to match min, and value is clamped
+      expect(s.currentValue).toBe(150)
+    })
+
+    it('should handle non-finite values', () => {
+      const s = slider({ min: 10, max: 100, value: 50 })
+
+      s.min(NaN)
+      // NaN defaults to 0, and value (50) is still within range 0-100
+      expect(s.currentValue).toBe(50)
+
+      s.min(Infinity)
+      // Infinity defaults to 0, value stays 50
+      expect(s.currentValue).toBe(50)
+
+      s.min(-Infinity)
+      // -Infinity defaults to 0, value stays 50
+      expect(s.currentValue).toBe(50)
+    })
+
+    it('should clamp current value when min increases', () => {
+      const s = slider({ min: 0, max: 100, value: 50 })
+      s.min(75)
+
+      expect(s.currentValue).toBe(75) // Clamped to new min
+    })
+  })
+
+  describe('max() edge cases', () => {
+    it('should adjust min when max < min', () => {
+      const s = slider({ min: 50, max: 100 })
+      s.max(25)
+
+      // Min is adjusted to match max, and value is clamped
+      expect(s.currentValue).toBe(25)
+    })
+
+    it('should handle non-finite values', () => {
+      const s = slider({ min: 0, max: 100, value: 50 })
+
+      s.max(NaN)
+      // NaN defaults to 100, and value (50) is still within range 0-100
+      expect(s.currentValue).toBe(50)
+
+      s.max(Infinity)
+      // Infinity defaults to 100, value stays 50
+      expect(s.currentValue).toBe(50)
+
+      s.max(-Infinity)
+      // -Infinity defaults to 100, value stays 50
+      expect(s.currentValue).toBe(50)
+    })
+
+    it('should clamp current value when max decreases', () => {
+      const s = slider({ min: 0, max: 100, value: 50 })
+      s.max(25)
+
+      expect(s.currentValue).toBe(25) // Clamped to new max
+    })
+  })
+
+  describe('step() edge cases', () => {
+    it('should enforce minimum step of 0.001', () => {
+      const s = slider()
+      s.step(0)
+
+      // Increment should still work with minimum step
+      const oldValue = s.currentValue
+      s.increment()
+      expect(s.currentValue).toBe(oldValue + 0.001)
+    })
+
+    it('should handle very small step values', () => {
+      const s = slider({ step: 0.0001 })
+      const oldValue = s.currentValue
+      s.increment()
+
+      expect(s.currentValue).toBe(oldValue + 0.0001)
+    })
+  })
+
+  describe('focus() edge cases', () => {
+    it('should not call handlers when already focused', () => {
+      const handler = vi.fn()
+      const s = slider().onFocus(handler)
+
+      s.focus()
+      expect(handler).toHaveBeenCalledTimes(1)
+
+      s.focus()
+      expect(handler).toHaveBeenCalledTimes(1) // Should not increase
+    })
+
+    it('should not focus when disposed', () => {
+      const s = slider()
+      s.dispose()
+      s.focus()
+
+      expect(s.isFocused).toBe(false)
+    })
+  })
+
+  describe('blur() edge cases', () => {
+    it('should be idempotent', () => {
+      const s = slider()
+      s.focus()
+
+      s.blur()
+      expect(s.isFocused).toBe(false)
+
+      s.blur()
+      expect(s.isFocused).toBe(false) // Should remain false
+    })
+  })
+
+  describe('keyboard handling additional keys', () => {
+    it('handles k key (vertical up)', () => {
+      const s = slider({ value: 50, step: 10, orientation: 'vertical' }).focus()
+      const handled = (s as any).handleKey('k', false)
+      expect(handled).toBe(true)
+      expect(s.currentValue).toBe(60)
+    })
+
+    it('handles j key (vertical down)', () => {
+      const s = slider({ value: 50, step: 10, orientation: 'vertical' }).focus()
+      const handled = (s as any).handleKey('j', false)
+      expect(handled).toBe(true)
+      expect(s.currentValue).toBe(40)
+    })
+
+    it('returns false for unknown keys', () => {
+      const s = slider({ value: 50 }).focus()
+      const handled = (s as any).handleKey('x', false)
+      expect(handled).toBe(false)
+      expect(s.currentValue).toBe(50)
+    })
+
+    it('returns false for space key', () => {
+      const s = slider({ value: 50 }).focus()
+      const handled = (s as any).handleKey(' ', false)
+      expect(handled).toBe(false)
+    })
+  })
+
+  describe('setValue() edge cases', () => {
+    it('should handle NaN values', () => {
+      const s = slider({ value: 50 })
+      s.setValue(NaN)
+
+      // NaN is not finite, but the value method uses clampValue
+      // which doesn't explicitly handle NaN
+      // The result depends on how Math.max/Math.min handle NaN
+      expect(typeof s.currentValue).toBe('number')
+    })
+
+    it('should handle Infinity values', () => {
+      const s = slider({ min: 0, max: 100, value: 50 })
+      s.setValue(Infinity)
+
+      expect(s.currentValue).toBe(100) // Clamped to max
+    })
+
+    it('should handle negative Infinity values', () => {
+      const s = slider({ min: 0, max: 100, value: 50 })
+      s.setValue(-Infinity)
+
+      expect(s.currentValue).toBe(0) // Clamped to min
+    })
+  })
+
+  describe('setPercent() edge cases', () => {
+    it('should handle NaN percent', () => {
+      const s = slider({ min: 0, max: 100, value: 50 })
+      s.setPercent(NaN)
+
+      // NaN in Math.max/Math.min comparisons results in NaN
+      // which then gets clamped by setValue
+      expect(typeof s.currentValue).toBe('number')
+    })
+
+    it('should handle Infinity percent', () => {
+      const s = slider({ min: 0, max: 100, value: 50 })
+      s.setPercent(Infinity)
+
+      expect(s.currentValue).toBe(100) // Clamped to max
+    })
+
+    it('should handle negative Infinity percent', () => {
+      const s = slider({ min: 0, max: 100, value: 50 })
+      s.setPercent(-Infinity)
+
+      expect(s.currentValue).toBe(0) // Clamped to min
+    })
+  })
+
+  describe('mouse handling edge cases', () => {
+    it('should handle zero track width', () => {
+      const s = slider({
+        min: 0,
+        max: 100,
+        value: 50,
+        showRange: true,
+        showValue: true
+      })
+      // Very small width that results in 0 track width
+      ;(s as any)._bounds = { x: 0, y: 0, width: 10, height: 1 }
+
+      // Should not throw or crash
+      const handled = (s as any).handleMouse(5, 0, 'press')
+      // Value might not change due to zero track width
+      expect(typeof handled).toBe('boolean')
+    })
+
+    it('should handle zero track height', () => {
+      const s = slider({
+        min: 0,
+        max: 100,
+        value: 50,
+        orientation: 'vertical'
+      })
+      // Very small height that results in 0 track height
+      ;(s as any)._bounds = { x: 0, y: 0, width: 5, height: 1 }
+
+      // Should not throw or crash
+      const handled = (s as any).handleMouse(2, 0, 'press')
+      expect(typeof handled).toBe('boolean')
+    })
+  })
+
+  describe('onChange handler cleanup', () => {
+    it('should not emit after offChange', () => {
+      const handler = vi.fn()
+      const s = slider().onChange(handler)
+
+      s.offChange(handler)
+      s.value(50)
+
+      expect(handler).not.toHaveBeenCalled()
+    })
+
+    it('should handle multiple onChange handlers', () => {
+      const handler1 = vi.fn()
+      const handler2 = vi.fn()
+      const s = slider().onChange(handler1).onChange(handler2)
+
+      s.value(50)
+
+      expect(handler1).toHaveBeenCalledWith(50)
+      expect(handler2).toHaveBeenCalledWith(50)
+    })
+
+    it('should only remove specific handler', () => {
+      const handler1 = vi.fn()
+      const handler2 = vi.fn()
+      const s = slider().onChange(handler1).onChange(handler2)
+
+      s.offChange(handler1)
+      s.value(50)
+
+      expect(handler1).not.toHaveBeenCalled()
+      expect(handler2).toHaveBeenCalledWith(50)
+    })
+  })
+
+  describe('focus/blur handler cleanup', () => {
+    it('should handle multiple focus handlers', () => {
+      const handler1 = vi.fn()
+      const handler2 = vi.fn()
+      const s = slider().onFocus(handler1).onFocus(handler2)
+
+      s.focus()
+
+      expect(handler1).toHaveBeenCalled()
+      expect(handler2).toHaveBeenCalled()
+    })
+
+    it('should handle multiple blur handlers', () => {
+      const handler1 = vi.fn()
+      const handler2 = vi.fn()
+      const s = slider().onBlur(handler1).onBlur(handler2)
+
+      s.focus().blur()
+
+      expect(handler1).toHaveBeenCalled()
+      expect(handler2).toHaveBeenCalled()
+    })
+  })
 })

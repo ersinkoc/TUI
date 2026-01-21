@@ -568,4 +568,296 @@ describe('loggerMiddleware', () => {
     expect(consoleSpy).toHaveBeenCalled()
     consoleSpy.mockRestore()
   })
+
+  it('should log action and state changes', () => {
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    const app = createMockApp()
+    const plugin = statePlugin()
+    plugin.install(app)
+
+    const middleware = loggerMiddleware()
+
+    const store = (app.state as any).createStore({
+      initialState: { count: 0 },
+      reducer: (state: any, action: Action) => {
+        if (action.type === 'INCREMENT') {
+          return { ...state, count: state.count + 1 }
+        }
+        return state
+      },
+      middleware: [middleware]
+    })
+
+    store.dispatch({ type: 'INCREMENT' })
+
+    expect(consoleSpy).toHaveBeenCalledWith('[state] Action:', 'INCREMENT', undefined)
+    expect(consoleSpy).toHaveBeenCalledWith('[state] Prev state:', { count: 0 })
+    expect(consoleSpy).toHaveBeenCalledWith('[state] Next state:', { count: 1 })
+    consoleSpy.mockRestore()
+  })
+})
+
+describe('devTools and error handling', () => {
+  it('should log listener errors when devTools is enabled', () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const app = createMockApp()
+    const plugin = statePlugin()
+    plugin.install(app)
+
+    const store = (app.state as any).createStore({
+      initialState: { count: 0 },
+      reducer: (state: any, action: Action) => {
+        if (action.type === 'INCREMENT') {
+          return { ...state, count: state.count + 1 }
+        }
+        return state
+      },
+      devTools: true
+    }) as Store<{ count: number }>
+
+    // Add a failing listener
+    store.subscribe(() => {
+      throw new Error('Listener error')
+    })
+
+    // Add a working listener
+    const workingListener = vi.fn()
+    store.subscribe(workingListener)
+
+    store.dispatch({ type: 'INCREMENT' })
+
+    // Working listener should still be called despite error in another
+    expect(workingListener).toHaveBeenCalled()
+    expect(consoleErrorSpy).toHaveBeenCalledWith('[state] Listener error:', expect.any(Error))
+    consoleErrorSpy.mockRestore()
+  })
+
+  it('should log selector errors when devTools is enabled', () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const app = createMockApp()
+    const plugin = statePlugin()
+    plugin.install(app)
+
+    const store = (app.state as any).createStore({
+      initialState: { items: [1, 2, 3] },
+      reducer: (state: any, action: Action) => {
+        if (action.type === 'ADD_ITEM') {
+          return { ...state, items: [...state.items, action.payload] }
+        }
+        return state
+      },
+      devTools: true
+    }) as Store<{ items: number[] }>
+
+    // Add a failing selector listener
+    store.select(
+      (state) => state.items,
+      () => {
+        throw new Error('Selector error')
+      }
+    )
+
+    // Add a working selector listener
+    const workingListener = vi.fn()
+    store.select(
+      (state) => state.items.length,
+      workingListener
+    )
+
+    store.dispatch({ type: 'ADD_ITEM', payload: 4 })
+
+    // Working listener should still be called
+    expect(workingListener).toHaveBeenCalled()
+    expect(consoleErrorSpy).toHaveBeenCalledWith('[state] Selector listener error:', expect.any(Error))
+    consoleErrorSpy.mockRestore()
+  })
+
+  it('should log state changes when devTools is enabled', () => {
+    const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    const app = createMockApp()
+    const plugin = statePlugin()
+    plugin.install(app)
+
+    const store = (app.state as any).createStore({
+      initialState: { count: 0 },
+      reducer: (state: any, action: Action) => {
+        if (action.type === 'INCREMENT') {
+          return { ...state, count: state.count + 1 }
+        }
+        return state
+      },
+      devTools: true
+    })
+
+    store.dispatch({ type: 'INCREMENT', payload: 1 })
+
+    expect(consoleLogSpy).toHaveBeenCalledWith('[state]', 'INCREMENT', 1, '->', { count: 1 })
+    consoleLogSpy.mockRestore()
+  })
+})
+
+describe('replaceReducer', () => {
+  it('should replace the current reducer', () => {
+    const app = createMockApp()
+    const plugin = statePlugin()
+    plugin.install(app)
+
+    const oldReducer: Reducer<{ value: number }> = (state, action) => {
+      if (action.type === 'DOUBLE') {
+        return { ...state, value: state.value * 2 }
+      }
+      return state
+    }
+
+    const newReducer: Reducer<{ value: number }> = (state, action) => {
+      if (action.type === 'TRIPLE') {
+        return { ...state, value: state.value * 3 }
+      }
+      return state
+    }
+
+    const store = (app.state as any).createStore({
+      initialState: { value: 5 },
+      reducer: oldReducer
+    }) as Store<{ value: number }>
+
+    store.dispatch({ type: 'DOUBLE' })
+    expect(store.getState().value).toBe(10)
+
+    store.replaceReducer(newReducer)
+
+    store.dispatch({ type: 'TRIPLE' })
+    expect(store.getState().value).toBe(30)
+  })
+})
+
+describe('history trimming', () => {
+  it('should trim history when maxHistorySize is exceeded', () => {
+    const app = createMockApp()
+    const plugin = statePlugin()
+    plugin.install(app)
+
+    const store = (app.state as any).createStore({
+      initialState: { count: 0 },
+      reducer: (state: any, action: Action) => {
+        if (action.type === 'INCREMENT') {
+          return { ...state, count: state.count + 1 }
+        }
+        return state
+      },
+      enableHistory: true,
+      maxHistorySize: 5
+    }) as Store<{ count: number }>
+
+    // Dispatch more actions than maxHistorySize
+    for (let i = 0; i < 10; i++) {
+      store.dispatch({ type: 'INCREMENT' })
+    }
+
+    const history = store.getHistory()
+    expect(history.length).toBe(5) // Should be trimmed to maxHistorySize
+    // After trimming, INIT gets removed too, oldest action is INCREMENT
+    expect(history[0].type).toBe('INCREMENT')
+    // The last action should be INCREMENT
+    expect(history[history.length - 1].type).toBe('INCREMENT')
+  })
+})
+
+describe('multiple middleware', () => {
+  it('should chain multiple middleware in order', () => {
+    const app = createMockApp()
+    const plugin = statePlugin()
+    plugin.install(app)
+
+    const executionOrder: string[] = []
+
+    const middleware1: any = (store: any, action: Action, next: any) => {
+      executionOrder.push('mw1-before')
+      next(action)
+      executionOrder.push('mw1-after')
+    }
+
+    const middleware2: any = (store: any, action: Action, next: any) => {
+      executionOrder.push('mw2-before')
+      next(action)
+      executionOrder.push('mw2-after')
+    }
+
+    const store = (app.state as any).createStore({
+      initialState: { count: 0 },
+      reducer: (state: any, action: Action) => {
+        if (action.type === 'INCREMENT') {
+          return { ...state, count: state.count + 1 }
+        }
+        return state
+      },
+      middleware: [middleware1, middleware2]
+    })
+
+    // Clear executionOrder after INIT action
+    executionOrder.length = 0
+    store.dispatch({ type: 'INCREMENT' })
+
+    // Middleware should execute in order with proper nesting (just for INCREMENT)
+    expect(executionOrder).toEqual(['mw1-before', 'mw2-before', 'mw2-after', 'mw1-after'])
+  })
+})
+
+describe('debug mode', () => {
+  it('should log when creating stores in debug mode', () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const app = createMockApp()
+    const plugin = statePlugin({ debug: true })
+    plugin.install(app)
+
+    ;(app.state as any).createStore({
+      initialState: { count: 0 },
+      reducer: (s: any) => s
+    })
+
+    expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('Created store:'))
+    consoleErrorSpy.mockRestore()
+  })
+
+  it('should log when registering stores in debug mode', () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const app = createMockApp()
+    const plugin = statePlugin({ debug: true })
+    plugin.install(app)
+
+    const store = (app.state as any).createStore({
+      initialState: { count: 0 },
+      reducer: (s: any) => s
+    })
+
+    ;(app.state as any).registerStore('myStore', store)
+
+    expect(consoleErrorSpy).toHaveBeenCalledWith('[state] Registered store: myStore')
+    consoleErrorSpy.mockRestore()
+  })
+
+  it('should log when unregistering stores in debug mode', () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const app = createMockApp()
+    const plugin = statePlugin({ debug: true })
+    plugin.install(app)
+
+    const store = (app.state as any).createStore({
+      initialState: { count: 0 },
+      reducer: (s: any) => s
+    })
+
+    ;(app.state as any).registerStore('myStore', store)
+    ;(app.state as any).unregisterStore('myStore')
+
+    expect(consoleErrorSpy).toHaveBeenCalledWith('[state] Unregistered store: myStore')
+    consoleErrorSpy.mockRestore()
+  })
 })

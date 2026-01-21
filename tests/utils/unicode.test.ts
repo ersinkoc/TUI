@@ -468,4 +468,281 @@ describe('Unicode Utilities', () => {
       expect(result).toBe('e\u0301e\u0301')
     })
   })
+
+  describe('boundary characters', () => {
+    it('should handle characters at WIDE_RANGES boundaries', () => {
+      // Test first character of wide range (0x1100 - Hangul Jamo)
+      expect(getCharWidth('\u1100')).toBe(2)
+      // Test last character of wide range (0x115f)
+      expect(getCharWidth('\u115f')).toBe(2)
+      // Test character just before wide range (0x10ff)
+      expect(getCharWidth('\u10ff')).toBe(1)
+      // Test character just after wide range (0x1160)
+      expect(getCharWidth('\u1160')).toBe(1)
+    })
+
+    it('should handle emoji range boundaries', () => {
+      // First emoji in range 0x1f300
+      expect(getCharWidth('\u{1f300}')).toBe(2)
+      // Last emoji in range 0x1f64f
+      expect(getCharWidth('\u{1f64f}')).toBe(2)
+    })
+
+    it('should handle CJK range boundaries', () => {
+      // First CJK (0x4e00)
+      expect(getCharWidth('\u4e00')).toBe(2)
+      // Last CJK (0x9fff)
+      expect(getCharWidth('\u9fff')).toBe(2)
+      // Just before CJK range
+      expect(getCharWidth('\u4dff')).toBe(1)
+      // Just after CJK range
+      expect(getCharWidth('\ua000')).toBe(2) // Yi Syllables start
+    })
+
+    it('should handle combining mark boundaries', () => {
+      // First combining mark (0x0300)
+      expect(getCharWidth('\u0300')).toBe(0)
+      // Last combining mark (0x036f)
+      expect(getCharWidth('\u036f')).toBe(0)
+      // Just before combining marks
+      expect(getCharWidth('\u02ff')).toBe(1)
+      // Just after combining marks
+      expect(getCharWidth('\u0370')).toBe(1)
+    })
+  })
+
+  describe('edge cases for wrapText', () => {
+    it('should handle words that exactly fit width', () => {
+      const lines = wrapText('hello world', 5)
+      expect(lines).toEqual(['hello', 'world'])
+    })
+
+    it('should handle words with multiple spaces', () => {
+      const lines = wrapText('hello  world', 11)
+      // split(/\s+/) treats consecutive spaces as single separator
+      expect(lines).toEqual(['hello world'])
+    })
+
+    it('should handle single very long CJK word', () => {
+      const lines = wrapText('你好世界你好', 4)
+      expect(lines.length).toBeGreaterThanOrEqual(2)
+      for (const line of lines) {
+        expect(stringWidth(line)).toBeLessThanOrEqual(4)
+      }
+    })
+
+    it('should handle empty input lines', () => {
+      const lines = wrapText('hello\n\nworld', 10)
+      expect(lines).toEqual(['hello', '', 'world'])
+    })
+
+    it('should handle single character words', () => {
+      const lines = wrapText('a b c d e', 3)
+      expect(lines).toEqual(['a b', 'c d', 'e'])
+    })
+
+    it('should handle CJK with spaces', () => {
+      const lines = wrapText('你好 世界', 2)
+      // Each CJK character is 2 wide, and space is 1 wide
+      // '你好' is 4 wide (too long), '你' is 2 wide (fits exactly)
+      // The space separates the words
+      expect(lines.length).toBeGreaterThanOrEqual(2)
+      expect(lines[0]).toBe('你')
+      // Later lines should contain the rest
+      const allText = lines.join('')
+      expect(allText).toContain('好')
+      expect(allText).toContain('世界')
+    })
+  })
+
+  describe('truncateToWidth edge cases', () => {
+    it('should handle maxWidth exactly at character boundary', () => {
+      expect(truncateToWidth('Hello', 5)).toBe('Hello')
+    })
+
+    it('should handle maxWidth between ASCII and CJK characters', () => {
+      // A中B where A=1, 中=2, B=1, total=4
+      expect(truncateToWidth('A中B', 3)).toBe('A中')
+    })
+
+    it('should handle very small maxWidth values', () => {
+      expect(truncateToWidth('Hello', 1)).toBe('H')
+      expect(truncateToWidth('你好', 1)).toBe('')
+    })
+
+    it('should handle ellipsis at exact boundary', () => {
+      const result = truncateToWidth('Hello World', 8, '...')
+      // Should truncate and add ellipsis
+      expect(stringWidth(result)).toBeLessThanOrEqual(8)
+    })
+  })
+
+  describe('truncateByGrapheme edge cases', () => {
+    it('should handle maxWidth exactly at emoji boundary', () => {
+      expect(truncateByGrapheme('😀😀', 2)).toBe('😀')
+    })
+
+    it('should handle mixed emoji and ASCII', () => {
+      expect(truncateByGrapheme('Hi😀Bye', 4)).toBe('Hi😀')
+    })
+
+    it('should handle emoji sequences with ZWJ', () => {
+      // Test with a more complex emoji sequence
+      const text = '👨‍👩‍👧‍👦' // Family emoji
+      const result = truncateByGrapheme(text, 2)
+      // Should include the whole family emoji since it's treated as one grapheme
+      expect(result).toBe('👨‍👩‍👧‍👦')
+    })
+
+    it('should handle maxWidth smaller than emoji width', () => {
+      // Emoji is 2 wide, maxWidth is 1
+      expect(truncateByGrapheme('😀', 1)).toBe('')
+    })
+
+    it('should handle multiple flags in sequence', () => {
+      const text = '🇹🇷🇺🇸🇬🇧'
+      expect(truncateByGrapheme(text, 4)).toBe('🇹🇷🇺🇸')
+    })
+  })
+
+  describe('padToWidth edge cases', () => {
+    it('should handle center padding with odd numbers', () => {
+      // 'hi' is width 2, target is 5, so 3 padding
+      // Left: 1, Right: 2
+      const result = padToWidth('hi', 5, 'center')
+      expect(result).toBe(' hi  ')
+    })
+
+    it('should handle CJK center padding', () => {
+      // '中' is width 2, target is 6, so 4 padding
+      const result = padToWidth('中', 6, 'center')
+      expect(result.length).toBeGreaterThanOrEqual(1)
+      expect(stringWidth(result)).toBe(6)
+    })
+
+    it('should handle zero width target', () => {
+      expect(padToWidth('Hello', 0, 'left')).toBe('')
+    })
+
+    it('should handle padding with multi-char pad string', () => {
+      // Should use first character of pad string
+      const result = padToWidth('hi', 6, 'left', '=-')
+      expect(result).toBe('hi====')
+    })
+  })
+
+  describe('sliceByWidth edge cases', () => {
+    it('should handle CJK slicing at exact boundaries', () => {
+      // With '你好世界', start=2, end=4:
+      // After '你': currentWidth=2, which is >= start (2), so startIndex=1
+      // After '好': currentWidth=4, which is >= end (4), so endIndex=2
+      // Result: chars.slice(1, 2) = ['好']
+      expect(sliceByWidth('你好世界', 2, 4)).toBe('好')
+    })
+
+    it('should handle mixed content slicing', () => {
+      // 'A你B好' = 1 + 2 + 1 + 2 = 6
+      expect(sliceByWidth('A你B好', 1, 5)).toBe('你B好')
+    })
+
+    it('should handle slicing with control characters', () => {
+      // 'a\tb' where \t has 0 width
+      // a=1, \t=0, b=1
+      expect(sliceByWidth('a\tb', 0, 1)).toBe('a')
+      expect(sliceByWidth('a\tb', 1, 2)).toBe('\tb')
+    })
+
+    it('should handle end beyond string width', () => {
+      expect(sliceByWidth('Hi', 0, 100)).toBe('Hi')
+    })
+
+    it('should handle negative start and end', () => {
+      // Negative values are treated as 0
+      expect(sliceByWidth('Hello', -5, -3)).toBe('')
+    })
+  })
+
+  describe('splitGraphemes fallback edge cases', () => {
+    it('should handle multiple combining marks', () => {
+      // Character with multiple combining marks
+      const text = 'e\u0301\u0308' // e + acute + diaeresis
+      const result = splitGraphemes(text)
+      // All combining marks should attach to base
+      expect(result).toHaveLength(1)
+    })
+
+    it('should handle emoji with variation selectors', () => {
+      // Heart with variation selector
+      const result = splitGraphemes('❤️')
+      expect(result).toHaveLength(1)
+    })
+
+    it('should handle single regional indicator', () => {
+      // Single RI should not be paired
+      const result = splitGraphemes('🇹')
+      expect(result).toHaveLength(1)
+    })
+
+    it('should handle ZWJ at end of string', () => {
+      const result = splitGraphemes('👨‍')
+      // Should include the ZWJ with previous character
+      expect(result.length).toBeGreaterThanOrEqual(1)
+    })
+  })
+
+  describe('graphemeWidth edge cases', () => {
+    it('should handle empty string', () => {
+      expect(graphemeWidth('')).toBe(0)
+    })
+
+    it('should handle only control characters', () => {
+      expect(graphemeWidth('\n\t\r')).toBe(0)
+    })
+
+    it('should handle only combining marks', () => {
+      // Combining marks are clustered together by splitGraphemes fallback
+      // The cluster is treated as one grapheme with code >= 32, so width 1
+      expect(graphemeWidth('\u0300\u0301')).toBe(1)
+    })
+
+    it('should handle mixed control and printable', () => {
+      expect(graphemeWidth('a\nb')).toBe(2)
+    })
+
+    it('should handle complex emoji sequences', () => {
+      // Person with skin tone and profession
+      const result = graphemeWidth('👨‍🚀')
+      expect(result).toBe(2)
+    })
+  })
+
+  describe('stringWidth edge cases', () => {
+    it('should handle strings with only control chars', () => {
+      expect(stringWidth('\n\t\r')).toBe(0)
+    })
+
+    it('should handle alternating wide and narrow', () => {
+      expect(stringWidth('a你b中c')).toBe(7) // 1+2+1+2+1
+    })
+
+    it('should handle emoji at boundaries', () => {
+      expect(stringWidth('a😀b')).toBe(4) // 1+2+1
+    })
+
+    it('should handle multiple consecutive control chars', () => {
+      expect(stringWidth('\n\n\n')).toBe(0)
+    })
+  })
+
+  describe('isWideCodePoint edge cases', () => {
+    it('should handle very high code points', () => {
+      // CJK Extension G (0x30000-0x3fffd)
+      expect(getCharWidth('\u{30000}')).toBe(2)
+    })
+
+    it('should handle characters between wide ranges', () => {
+      // Character between 0x115f (Hangul Jamo end) and 0x2329 (angle bracket)
+      expect(getCharWidth('\u1200')).toBe(1)
+    })
+  })
 })

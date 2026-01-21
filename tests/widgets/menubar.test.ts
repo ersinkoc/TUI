@@ -1557,5 +1557,122 @@ describe('Menubar Widget', () => {
       }
       expect(foundUpArrow).toBe(true)
     })
+
+    it('truncates item text when it exceeds content width after adding shortcut', () => {
+      const buffer = createBuffer(30, 10)
+      fillBuffer(buffer, { char: ' ', fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      const m = menubar({ border: 'single' })
+        .addMenu({
+          id: 'file',
+          label: 'F',
+          items: [
+            { label: 'A very very long item name', value: 'long', shortcut: 'Ctrl+L' }
+          ]
+        })
+        .openMenu('file')
+      ;(m as any)._bounds = { x: 0, y: 0, width: 30, height: 10 }
+
+      // This should trigger the truncation path (lines 814-816)
+      m.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      // The item should be rendered (may be truncated)
+      let found = false
+      for (let y = 0; y < 10; y++) {
+        for (let x = 0; x < 30; x++) {
+          const cell = buffer.get(x, y)
+          if (cell.char === 'A' || cell.char === 'C') {
+            found = true
+            break
+          }
+        }
+        if (found) break
+      }
+      expect(found).toBe(true)
+    })
+
+    it('truncates item with no shortcut when it exceeds content width', () => {
+      const buffer = createBuffer(30, 10)
+      fillBuffer(buffer, { char: ' ', fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      const m = menubar({ border: 'single' })
+        .addMenu({
+          id: 'file',
+          label: 'F',
+          items: [
+            { label: 'An extremely long menu item that exceeds dropdown width', value: 'long' }
+          ]
+        })
+        .openMenu('file')
+      ;(m as any)._bounds = { x: 0, y: 0, width: 30, height: 10 }
+
+      // This should trigger the truncation path (line 814-816)
+      m.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      // The item should be rendered (truncated)
+      let found = false
+      for (let y = 0; y < 10; y++) {
+        for (let x = 0; x < 30; x++) {
+          if (buffer.get(x, y).char === 'A') {
+            found = true
+            break
+          }
+        }
+        if (found) break
+      }
+      expect(found).toBe(true)
+    })
+  })
+
+  describe('dispose', () => {
+    it('clears handlers and menus on dispose', () => {
+      const selectHandler = vi.fn()
+      const openHandler = vi.fn()
+      const closeHandler = vi.fn()
+
+      const m = menubar()
+        .addMenu({
+          id: 'file',
+          label: 'File',
+          items: [{ label: 'New', value: 'new' }]
+        })
+        .onSelect(selectHandler)
+        .onMenuOpen(openHandler)
+        .onMenuClose(closeHandler)
+
+      m.dispose()
+
+      // Should be safe to call after dispose
+      expect(m.menuList).toHaveLength(0)
+
+      m.openMenu('file')
+      // Menu shouldn't be found since menus were cleared
+      expect(m.isMenuOpen).toBe(false)
+    })
+
+    it('is idempotent', () => {
+      const m = menubar()
+        .addMenu({ id: 'file', label: 'File', items: [] })
+
+      m.dispose()
+      m.dispose()
+
+      expect(m.isDisposed).toBe(true)
+    })
+
+    it('does not crash when disposing with open menu', () => {
+      const m = menubar()
+        .addMenu({
+          id: 'file',
+          label: 'File',
+          items: [{ label: 'New', value: 'new' }]
+        })
+        .openMenu('file')
+
+      m.dispose()
+
+      expect(m.isDisposed).toBe(true)
+      expect(m.menuList).toHaveLength(0)
+    })
   })
 })

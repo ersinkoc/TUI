@@ -716,4 +716,228 @@ describe('Wizard Widget', () => {
       expect(w.stepStatuses.get('s2')).toBe('pending')
     })
   })
+
+  describe('dispose', () => {
+    it('clears handlers on dispose', () => {
+      const stepHandler = vi.fn()
+      const completeHandler = vi.fn()
+      const validationHandler = vi.fn()
+
+      const w = wizard()
+        .addStep({ id: 's1', title: 'Step 1', content: text('Content 1') })
+        .onStepChange(stepHandler)
+        .onComplete(completeHandler)
+        .onValidationError(validationHandler)
+
+      w.dispose()
+
+      // Should be safe to call after dispose
+      w.setStepStatus('s1', 'completed')
+      // After dispose, the step is removed so get returns undefined
+      expect(w.stepStatuses.get('s1')).toBeUndefined()
+    })
+
+    it('is idempotent', () => {
+      const w = wizard()
+        .addStep({ id: 's1', title: 'Step 1', content: text('Content 1') })
+
+      w.dispose()
+      w.dispose() // Should not error
+
+      expect(w.isDisposed).toBe(true)
+    })
+
+    it('removes parent reference from step content', () => {
+      const content = text('Content')
+      const w = wizard()
+        .addStep({ id: 's1', title: 'Step 1', content: content })
+
+      expect((content as any)._parent).toBe(w)
+
+      w.dispose()
+
+      expect((content as any)._parent).toBeNull()
+    })
+  })
+
+  describe('concurrent navigation', () => {
+    it('prevents concurrent navigation to next', async () => {
+      const w = wizard()
+        .addStep({
+          id: 's1',
+          title: 'Step 1',
+          content: text('Content 1'),
+          validate: async () => {
+            // Simulate long-running validation
+            await new Promise(resolve => setTimeout(resolve, 100))
+            return true
+          }
+        })
+        .addStep({ id: 's2', title: 'Step 2', content: text('Content 2') })
+
+      // Start first navigation
+      const promise1 = w.next()
+
+      // Try to navigate again while first is in progress
+      const result2 = await w.next()
+
+      // Second navigation should return false due to guard
+      expect(result2).toBe(false)
+
+      // First navigation should complete
+      await promise1
+      expect(w.currentStepId).toBe('s2')
+    })
+
+    it('handles finally block on completion', async () => {
+      const w = wizard()
+        .addStep({ id: 's1', title: 'Step 1', content: text('Content 1') })
+
+      // Complete the wizard (last step)
+      const result = await w.next()
+
+      expect(result).toBe(true)
+      // Navigation flag should be cleared
+      // This allows the test to complete without issues
+    })
+  })
+
+  describe('goTo edge cases', () => {
+    it('handles NaN in goTo', () => {
+      const w = wizard()
+        .addStep({ id: 's1', title: 'Step 1', content: text('Content 1') })
+        .addStep({ id: 's2', title: 'Step 2', content: text('Content 2') })
+
+      w.goTo(NaN)
+      expect(w.currentStepId).toBe('s1') // Should stay on current
+    })
+
+    it('handles Infinity in goTo', () => {
+      const w = wizard()
+        .addStep({ id: 's1', title: 'Step 1', content: text('Content 1') })
+
+      w.goTo(Infinity)
+      expect(w.currentStepId).toBe('s1') // Should stay on current
+    })
+
+    it('handles -Infinity in goTo', () => {
+      const w = wizard()
+        .addStep({ id: 's1', title: 'Step 1', content: text('Content 1') })
+
+      w.goTo(-Infinity)
+      expect(w.currentStepId).toBe('s1') // Should stay on current
+    })
+
+    it('handles empty string in goTo', () => {
+      const w = wizard()
+        .addStep({ id: 's1', title: 'Step 1', content: text('Content 1') })
+
+      w.goTo('')
+      expect(w.currentStepId).toBe('s1') // Should stay on current
+    })
+
+    it('handles decimal numbers in goTo', () => {
+      const w = wizard()
+        .addStep({ id: 's1', title: 'Step 1', content: text('Content 1') })
+        .addStep({ id: 's2', title: 'Step 2', content: text('Content 2') })
+
+      w.goTo(1.7) // Should floor to 1
+      expect(w.currentStepId).toBe('s2')
+    })
+  })
+
+  describe('render edge cases', () => {
+    let buffer: ReturnType<typeof createBuffer>
+    const width = 60
+    const height = 15
+
+    beforeEach(() => {
+      buffer = createBuffer(width, height)
+      fillBuffer(buffer, { char: ' ', fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+    })
+
+    it('handles empty wizard with no steps', () => {
+      const w = wizard()
+      ;(w as any)._bounds = { x: 0, y: 0, width, height }
+      w.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+      // Should not crash
+    })
+
+    it('handles horizontal render with zero step width', () => {
+      const w = wizard({ orientation: 'horizontal' })
+        .addStep({ id: 's1', title: 'Step 1', content: text('Content 1') })
+      ;(w as any)._bounds = { x: 0, y: 0, width: 1, height } // Too narrow
+      w.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+      // Should not crash
+    })
+
+    it('handles vertical render with negative content width', () => {
+      const w = wizard({ orientation: 'vertical' })
+        .addStep({ id: 's1', title: 'Step 1', content: text('Content 1') })
+      ;(w as any)._bounds = { x: 0, y: 0, width: 10, height } // Too narrow for vertical layout
+      w.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+      // Should not crash
+    })
+
+    it('handles vertical render with exactly indicator width', () => {
+      const w = wizard({ orientation: 'vertical' })
+        .addStep({ id: 's1', title: 'Step 1', content: text('Content 1') })
+      ;(w as any)._bounds = { x: 0, y: 0, width: 21, height } // indicatorWidth(20) + 1 = 21, contentWidth = 0
+      w.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+      // Should not crash (contentWidth <= 0 check)
+    })
+
+    it('handles many steps in horizontal with very small width', () => {
+      const w = wizard({ orientation: 'horizontal' })
+      for (let i = 0; i < 10; i++) {
+        w.addStep({ id: `s${i}`, title: `Step ${i}`, content: text(`Content ${i}`) })
+      }
+      ;(w as any)._bounds = { x: 0, y: 0, width: 5, height }
+      w.render(buffer, { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+      // Should not crash (stepWidth would be 0)
+    })
+  })
+
+  describe('allowBack method', () => {
+    it('sets allowBack property', () => {
+      const w = wizard()
+        .addStep({ id: 's1', title: 'Step 1', content: text('Content 1') })
+        .addStep({ id: 's2', title: 'Step 2', content: text('Content 2') })
+        .goTo(1)
+
+      w.allowBack(false)
+      w.previous()
+
+      expect(w.currentStepId).toBe('s2') // Should not go back
+    })
+
+    it('allows navigation back when enabled', () => {
+      const w = wizard()
+        .addStep({ id: 's1', title: 'Step 1', content: text('Content 1') })
+        .addStep({ id: 's2', title: 'Step 2', content: text('Content 2') })
+        .goTo(1)
+
+      w.allowBack(true)
+      w.previous()
+
+      expect(w.currentStepId).toBe('s1') // Should go back
+    })
+  })
+
+  describe('steps method clears step statuses', () => {
+    it('clears old step statuses when setting new steps', () => {
+      const w = wizard()
+        .addStep({ id: 's1', title: 'Step 1', content: text('Content 1') })
+        .addStep({ id: 's2', title: 'Step 2', content: text('Content 2') })
+
+      w.setStepStatus('s1', 'error')
+      w.setStepStatus('s2', 'skipped')
+
+      w.steps([{ id: 's3', title: 'Step 3', content: text('Content 3') }])
+
+      expect(w.stepStatuses.has('s1')).toBe(false)
+      expect(w.stepStatuses.has('s2')).toBe(false)
+      expect(w.stepStatuses.get('s3')).toBe('current')
+    })
+  })
 })

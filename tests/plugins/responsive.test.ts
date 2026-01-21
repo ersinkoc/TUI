@@ -481,4 +481,208 @@ describe('terminalPresets', () => {
   it('should have vscode preset', () => {
     expect(terminalPresets.vscode).toEqual({ width: 100, height: 20 })
   })
+
+  describe('debug mode', () => {
+    it('should log when debug is enabled', () => {
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const app = createMockApp(200, 50) as TUIApp & { responsive?: ResponsivePluginAPI; _triggerResize: (w: number, h: number) => void }
+      const plugin = responsivePlugin({ debug: true })
+      plugin.install(app)
+
+      // Trigger resize to trigger debug logging
+      app._triggerResize(200, 50)
+      plugin.onResize?.(200, 50)
+
+      expect(consoleErrorSpy).toHaveBeenCalled()
+      consoleErrorSpy.mockRestore()
+    })
+
+    it('should log handler errors in debug mode', () => {
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const app = createMockApp(70, 20) as TUIApp & { responsive?: ResponsivePluginAPI; _triggerResize: (w: number, h: number) => void }
+      const plugin = responsivePlugin({ debug: true })
+      plugin.install(app)
+
+      const errorHandler = vi.fn(() => {
+        throw new Error('Handler error')
+      })
+      app.responsive!.onChange(errorHandler)
+
+      app._triggerResize(100, 30)
+      plugin.onResize?.(100, 30)
+
+      expect(consoleErrorSpy).toHaveBeenCalled()
+      consoleErrorSpy.mockRestore()
+    })
+  })
+
+  describe('unknown breakpoint handling', () => {
+    it('should return false for unknown breakpoint in isAtLeast', () => {
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const app = createMockApp(70, 20)
+      const plugin = responsivePlugin({ debug: true })
+      plugin.install(app)
+
+      const result = app.responsive!.isAtLeast('unknown')
+      expect(result).toBe(false)
+      expect(consoleErrorSpy).toHaveBeenCalled()
+      consoleErrorSpy.mockRestore()
+    })
+
+    it('should return false for unknown breakpoint in isAtMost', () => {
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const app = createMockApp(70, 20)
+      const plugin = responsivePlugin({ debug: true })
+      plugin.install(app)
+
+      const result = app.responsive!.isAtMost('unknown')
+      expect(result).toBe(false)
+      expect(consoleErrorSpy).toHaveBeenCalled()
+      consoleErrorSpy.mockRestore()
+    })
+
+    it('should return false for unknown breakpoint in isBetween', () => {
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const app = createMockApp(70, 20)
+      const plugin = responsivePlugin({ debug: true })
+      plugin.install(app)
+
+      const result = app.responsive!.isBetween('unknown', 'lg')
+      expect(result).toBe(false)
+      expect(consoleErrorSpy).toHaveBeenCalled()
+      consoleErrorSpy.mockRestore()
+    })
+  })
+
+  describe('orientation edge cases', () => {
+    it('should not match portrait/landscape when square in matches query', () => {
+      const app = createMockApp(50, 50) // Square
+      const plugin = responsivePlugin()
+      plugin.install(app)
+
+      expect(app.responsive!.matches({ orientation: 'portrait' })).toBe(false)
+      expect(app.responsive!.matches({ orientation: 'landscape' })).toBe(false)
+    })
+  })
+
+  describe('resolve fallback behavior', () => {
+    it('should fall back to smaller breakpoints when exact match not found', () => {
+      const app = createMockApp(100, 30) // lg breakpoint
+      const plugin = responsivePlugin()
+      plugin.install(app)
+
+      // xl and 2xl not defined, should fall back to lg, then md
+      const result = app.responsive!.resolve({ xs: 1, md: 2 }, 0)
+      expect(result).toBe(2) // Falls back to md
+    })
+
+    it('should return default when no smaller breakpoint has value', () => {
+      const app = createMockApp(30, 20) // xs breakpoint
+      const plugin = responsivePlugin()
+      plugin.install(app)
+
+      const result = app.responsive!.resolve({ md: 3, lg: 4 }, 99)
+      expect(result).toBe(99) // No matching breakpoint, return default
+    })
+  })
+
+  describe('addBreakpoint edge cases', () => {
+    it('should replace existing breakpoint with same name', () => {
+      const app = createMockApp(50, 20)
+      const plugin = responsivePlugin()
+      plugin.install(app)
+
+      // sm breakpoint exists, replace with new definition
+      app.responsive!.addBreakpoint({ name: 'sm', minWidth: 100 })
+
+      const breakpoints = app.responsive!.getBreakpoints()
+      const sm = breakpoints.find(b => b.name === 'sm')
+      expect(sm?.minWidth).toBe(100)
+    })
+
+    it('should re-evaluate current breakpoint after adding', () => {
+      const app = createMockApp(50, 20) as TUIApp & { responsive?: ResponsivePluginAPI; _triggerResize: (w: number, h: number) => void }
+      const plugin = responsivePlugin()
+      plugin.install(app)
+
+      const before = app.responsive!.current()
+      app.responsive!.addBreakpoint({ name: 'custom', minWidth: 40, maxWidth: 60 })
+
+      // The current breakpoint might change if the new one matches
+      expect(app.responsive!.getBreakpoints().length).toBeGreaterThan(6)
+    })
+  })
+
+  describe('destroy method', () => {
+    it('should clean up event listeners and handlers on destroy', () => {
+      const app = createMockApp(70, 20) as TUIApp & { responsive?: ResponsivePluginAPI; _triggerResize: (w: number, h: number) => void }
+      const plugin = responsivePlugin()
+      plugin.install(app)
+
+      const handler = vi.fn()
+      app.responsive!.onChange(handler)
+
+      plugin.destroy()
+
+      // Trigger resize after destroy
+      app._triggerResize(100, 30)
+      plugin.onResize?.(100, 30)
+
+      // Handler should not be called
+      expect(handler).not.toHaveBeenCalled()
+    })
+
+    it('should be safe to call destroy multiple times', () => {
+      const app = createMockApp(70, 20)
+      const plugin = responsivePlugin()
+      plugin.install(app)
+
+      plugin.destroy()
+      plugin.destroy()
+
+      // Should not throw
+      expect(plugin.name).toBe('responsive')
+    })
+
+    it('should clear change handlers on destroy', () => {
+      const app = createMockApp(70, 20) as TUIApp & { responsive?: ResponsivePluginAPI; _triggerResize: (w: number, h: number) => void }
+      const plugin = responsivePlugin()
+      plugin.install(app)
+
+      const handler = vi.fn()
+      app.responsive!.onChange(handler)
+
+      plugin.destroy()
+      app._triggerResize(100, 30)
+      plugin.onResize?.(100, 30)
+
+      expect(handler).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('removeBreakpoint when found', () => {
+    it('should re-evaluate current breakpoint after removing', () => {
+      const app = createMockApp(90, 30) as TUIApp & { responsive?: ResponsivePluginAPI; _triggerResize: (w: number, h: number) => void }
+      const plugin = responsivePlugin()
+      plugin.install(app)
+
+      const before = app.responsive!.current()
+      app.responsive!.removeBreakpoint('lg')
+
+      // The current breakpoint should be re-evaluated
+      const after = app.responsive!.current()
+      expect(app.responsive!.getBreakpoints().find(b => b.name === 'lg')).toBeUndefined()
+    })
+
+    it('should do nothing when removing non-existent breakpoint', () => {
+      const app = createMockApp(70, 20)
+      const plugin = responsivePlugin()
+      plugin.install(app)
+
+      const beforeCount = app.responsive!.getBreakpoints().length
+      app.responsive!.removeBreakpoint('nonexistent')
+
+      expect(app.responsive!.getBreakpoints().length).toBe(beforeCount)
+    })
+  })
 })

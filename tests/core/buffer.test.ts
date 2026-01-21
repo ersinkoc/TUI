@@ -406,4 +406,321 @@ describe('Buffer', () => {
       expect(buffer.get(5, 5)?.fg).toBe(12345)
     })
   })
+
+  describe('write edge cases', () => {
+    it('should handle writing with negative starting position', () => {
+      const buffer = createBuffer(10, 5)
+      buffer.write(-2, 0, 'Hello', { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      // First 2 positions should show 'llo' (H-e are off-screen)
+      expect(buffer.get(0, 0)?.char).toBe('l')
+      expect(buffer.get(1, 0)?.char).toBe('l')
+      expect(buffer.get(2, 0)?.char).toBe('o')
+    })
+
+    it('should handle writing with zero-width characters', () => {
+      const buffer = createBuffer(10, 5)
+      buffer.write(0, 0, 'a\u0300b', { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      // Combining mark should be skipped
+      expect(buffer.get(0, 0)?.char).toBe('a')
+      expect(buffer.get(1, 0)?.char).toBe('b')
+    })
+
+    it('should handle writing with control characters', () => {
+      const buffer = createBuffer(10, 5)
+      buffer.write(0, 0, 'a\nb\tc', { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      // Control chars should be skipped
+      expect(buffer.get(0, 0)?.char).toBe('a')
+      expect(buffer.get(1, 0)?.char).toBe('b')
+      expect(buffer.get(2, 0)?.char).toBe('c')
+    })
+
+    it('should handle CJK at right edge', () => {
+      const buffer = createBuffer(5, 1)
+      buffer.write(3, 0, '你好', { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      // First CJK (你) at position 3, continuation at 4
+      expect(buffer.get(3, 0)?.char).toBe('你')
+      expect(buffer.get(4, 0)?.char).toBe('')
+      // Second CJK doesn't fit, should show space at position 5 (out of bounds)
+      // Actually, position 5 is beyond width 5, so nothing should be written
+      // The CJK char that doesn't fit is replaced with space
+      // Let me check the code again...
+      // writeCol = 4, charWidth = 2, writeCol + 1 >= w (4 + 1 >= 5 = true)
+      // So it writes a space instead
+      expect(buffer.get(4, 0)?.char).toBe('')
+    })
+
+    it('should handle CJK starting off-screen extending into view', () => {
+      const buffer = createBuffer(5, 1)
+      buffer.write(-1, 0, '你好', { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      // First CJK starts at -1, should show space at position 0
+      expect(buffer.get(0, 0)?.char).toBe(' ')
+      // Then the second CJK at position 1-2
+      expect(buffer.get(1, 0)?.char).toBe('好')
+    })
+
+    it('should clear existing wide character when overwriting', () => {
+      const buffer = createBuffer(10, 1)
+      // Write a wide character first
+      buffer.write(0, 0, '你好', { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+      expect(buffer.get(1, 0)?.char).toBe('')
+
+      // Now overwrite part of it
+      buffer.write(1, 0, 'X', { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      // The clearWideCharacterAt function clears the wide character's first cell
+      // when writing to its continuation cell
+      expect(buffer.get(0, 0)?.char).toBe(' ')
+      expect(buffer.get(1, 0)?.char).toBe('X')
+    })
+  })
+
+  describe('fill edge cases', () => {
+    it('should handle negative coordinates', () => {
+      const buffer = createBuffer(10, 10)
+      buffer.fill(-5, -5, 10, 10, { char: '#', fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      // Should fill starting from (0, 0)
+      expect(buffer.get(0, 0)?.char).toBe('#')
+    })
+
+    it('should handle fill beyond buffer boundaries', () => {
+      const buffer = createBuffer(5, 5)
+      buffer.fill(3, 3, 10, 10, { char: '#', fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      // Should only fill within bounds
+      expect(buffer.get(3, 3)?.char).toBe('#')
+      expect(buffer.get(4, 4)?.char).toBe('#')
+    })
+
+    it('should handle zero width or height', () => {
+      const buffer = createBuffer(10, 10)
+      buffer.set(5, 5, { char: 'X', fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      buffer.fill(0, 0, 0, 5, { char: '#', fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+      buffer.fill(0, 0, 5, 0, { char: '#', fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      // The X should remain unchanged
+      expect(buffer.get(5, 5)?.char).toBe('X')
+    })
+  })
+
+  describe('createBuffer error cases', () => {
+    it('should throw for extremely large buffers', () => {
+      // 1001 x 1001 = 1002001 > 1000000
+      expect(() => createBuffer(1001, 1001)).toThrow('Invalid buffer size')
+    })
+
+    it('should clamp negative dimensions', () => {
+      const buffer = createBuffer(-5, -10)
+      expect(buffer.width).toBe(1)
+      expect(buffer.height).toBe(1)
+    })
+  })
+
+  describe('fillBuffer with cell object', () => {
+    it('should accept full cell object', () => {
+      const buffer = createBuffer(5, 5)
+      const cell: Cell = {
+        char: '#',
+        fg: 12345,
+        bg: 54321,
+        attrs: 1
+      }
+      fillBuffer(buffer, cell)
+
+      const result = buffer.get(0, 0)
+      expect(result?.char).toBe('#')
+      expect(result?.fg).toBe(12345)
+      expect(result?.bg).toBe(54321)
+      expect(result?.attrs).toBe(1)
+    })
+  })
+
+  describe('drawHLine edge cases', () => {
+    it('should handle negative starting position', () => {
+      const buffer = createBuffer(10, 5)
+      drawHLine(buffer, -5, 2, 10, '-')
+
+      // Should draw from position 0
+      expect(buffer.get(0, 2)?.char).toBe('-')
+    })
+
+    it('should handle zero length', () => {
+      const buffer = createBuffer(10, 5)
+      buffer.set(0, 2, { char: 'X', fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      drawHLine(buffer, 0, 2, 0, '-')
+
+      // Should remain unchanged
+      expect(buffer.get(0, 2)?.char).toBe('X')
+    })
+
+    it('should apply style', () => {
+      const buffer = createBuffer(10, 5)
+      drawHLine(buffer, 0, 2, 5, '-', { fg: 12345, bg: 54321, attrs: 1 })
+
+      expect(buffer.get(0, 2)?.fg).toBe(12345)
+      expect(buffer.get(0, 2)?.bg).toBe(54321)
+      expect(buffer.get(0, 2)?.attrs).toBe(1)
+    })
+  })
+
+  describe('drawVLine edge cases', () => {
+    it('should handle negative starting position', () => {
+      const buffer = createBuffer(5, 10)
+      drawVLine(buffer, 2, -5, 10, '|')
+
+      // Should draw from row 0
+      expect(buffer.get(2, 0)?.char).toBe('|')
+    })
+
+    it('should handle zero length', () => {
+      const buffer = createBuffer(10, 5)
+      buffer.set(2, 0, { char: 'X', fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      drawVLine(buffer, 2, 0, 0, '|')
+
+      // Should remain unchanged
+      expect(buffer.get(2, 0)?.char).toBe('X')
+    })
+
+    it('should apply style', () => {
+      const buffer = createBuffer(10, 5)
+      drawVLine(buffer, 2, 0, 5, '|', { fg: 12345, bg: 54321, attrs: 1 })
+
+      expect(buffer.get(2, 0)?.fg).toBe(12345)
+      expect(buffer.get(2, 0)?.bg).toBe(54321)
+      expect(buffer.get(2, 0)?.attrs).toBe(1)
+    })
+  })
+
+  describe('drawRect edge cases', () => {
+    it('should apply style to border', () => {
+      const buffer = createBuffer(10, 10)
+      const chars = BORDER_CHARS.single
+      drawRect(buffer, 0, 0, 5, 5, chars, { fg: 12345, bg: 54321, attrs: 1 })
+
+      expect(buffer.get(0, 0)?.fg).toBe(12345)
+      expect(buffer.get(0, 0)?.bg).toBe(54321)
+      expect(buffer.get(0, 0)?.attrs).toBe(1)
+    })
+
+    it('should handle negative dimensions gracefully', () => {
+      const buffer = createBuffer(10, 10)
+      buffer.set(0, 0, { char: 'X', fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+      const chars = BORDER_CHARS.single
+
+      // Should return early without drawing
+      drawRect(buffer, 0, 0, -5, 5, chars)
+      expect(buffer.get(0, 0)?.char).toBe('X')
+    })
+  })
+
+  describe('resize edge cases', () => {
+    it('should handle negative dimensions', () => {
+      const buffer = createBuffer(10, 10)
+      buffer.set(5, 5, { char: 'X', fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      buffer.resize(-5, -10)
+
+      // Should clamp to minimum 1x1
+      expect(buffer.width).toBe(1)
+      expect(buffer.height).toBe(1)
+      // Content should be preserved (position 5,5 is now out of bounds)
+      expect(buffer.get(0, 0)?.char).toBe(' ')
+    })
+
+    it('should preserve content when expanding', () => {
+      const buffer = createBuffer(5, 5)
+      buffer.write(0, 0, 'Hello', { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      buffer.resize(10, 10)
+
+      expect(buffer.get(0, 0)?.char).toBe('H')
+      expect(buffer.get(4, 0)?.char).toBe('o')
+      // New cells should be empty
+      expect(buffer.get(9, 9)?.char).toBe(' ')
+    })
+  })
+
+  describe('write with CJK continuation', () => {
+    it('should properly fill continuation cells', () => {
+      const buffer = createBuffer(10, 1)
+      buffer.write(0, 0, '你好世界', { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      expect(buffer.get(0, 0)?.char).toBe('你')
+      expect(buffer.get(1, 0)?.char).toBe('')
+      expect(buffer.get(2, 0)?.char).toBe('好')
+      expect(buffer.get(3, 0)?.char).toBe('')
+      expect(buffer.get(4, 0)?.char).toBe('世')
+      expect(buffer.get(5, 0)?.char).toBe('')
+      expect(buffer.get(6, 0)?.char).toBe('界')
+      expect(buffer.get(7, 0)?.char).toBe('')
+    })
+
+    it('should handle multiple CJK in sequence', () => {
+      const buffer = createBuffer(10, 1)
+      buffer.write(2, 0, '你好', { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      expect(buffer.get(2, 0)?.char).toBe('你')
+      expect(buffer.get(3, 0)?.char).toBe('')
+      expect(buffer.get(4, 0)?.char).toBe('好')
+      expect(buffer.get(5, 0)?.char).toBe('')
+    })
+  })
+
+  describe('write truncation', () => {
+    it('should truncate long text at buffer width', () => {
+      const buffer = createBuffer(5, 1)
+      buffer.write(0, 0, 'HelloWorld', { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      // Should only write first 5 characters
+      expect(buffer.get(4, 0)?.char).toBe('o')
+      // Position 5 doesn't exist
+      expect(buffer.get(5, 0)).toBeUndefined()
+    })
+
+    it('should handle text shorter than buffer', () => {
+      const buffer = createBuffer(10, 1)
+      buffer.write(0, 0, 'Hi', { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      expect(buffer.get(0, 0)?.char).toBe('H')
+      expect(buffer.get(1, 0)?.char).toBe('i')
+      // Rest should be empty
+      expect(buffer.get(2, 0)?.char).toBe(' ')
+    })
+  })
+
+  describe('copyRegion edge cases', () => {
+    it('should handle source outside buffer bounds', () => {
+      const src = createBuffer(5, 5)
+      const dst = createBuffer(5, 5)
+
+      src.set(0, 0, { char: 'X', fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      // Copy from out-of-bounds source
+      copyRegion(src, dst, 10, 10, 5, 5, 0, 0)
+
+      // Destination should remain unchanged
+      expect(dst.get(0, 0)?.char).toBe(' ')
+    })
+
+    it('should handle destination outside buffer bounds', () => {
+      const src = createBuffer(5, 5)
+      const dst = createBuffer(5, 5)
+
+      src.set(0, 0, { char: 'X', fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      // Copy to out-of-bounds destination
+      copyRegion(src, dst, 0, 0, 5, 5, 10, 10)
+
+      // Destination should remain unchanged (out of bounds)
+      expect(dst.get(4, 4)?.char).toBe(' ')
+    })
+  })
 })
