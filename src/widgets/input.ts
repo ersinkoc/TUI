@@ -311,6 +311,74 @@ class InputNodeImpl extends LeafNode implements InputNode {
     super.dispose()
   }
 
+  /**
+   * Check if a character is valid for input (no control characters).
+   */
+  private isValidInputChar(char: string): boolean {
+    const code = char.codePointAt(0) ?? 0
+
+    // Reject C0 control characters (except tab which we handle separately)
+    if (code < 32 && code !== 9) return false
+
+    // Reject DEL and C1 control characters
+    if (code === 0x7f) return false
+    if (code >= 0x80 && code < 0xa0) return false
+
+    // Reject specific Unicode control characters
+    if (code === 0x2028 || code === 0x2029) return false // Line/paragraph separators
+
+    return true
+  }
+
+  /**
+   * Sanitize input key by removing ALL invalid characters, not just checking the first one.
+   */
+  private sanitizeInputKey(key: string): string {
+    // Quick rejection for known bad sequences
+    if (key.includes('\x1b') || key.includes('\x07') || key.includes('\x00')) {
+      // Remove all escape sequences and control chars, keep valid parts
+      const graphemes = splitGraphemes(key)
+      const validGraphemes: string[] = []
+
+      for (const grapheme of graphemes) {
+        // Check EVERY character in the grapheme
+        let isValid = true
+        for (const char of grapheme) {
+          if (!this.isValidInputChar(char)) {
+            isValid = false
+            break
+          }
+        }
+
+        if (isValid) {
+          validGraphemes.push(grapheme)
+        }
+      }
+
+      return validGraphemes.join('')
+    }
+
+    // Fast path: validate graphemes
+    const graphemes = splitGraphemes(key)
+    const validGraphemes: string[] = []
+
+    for (const grapheme of graphemes) {
+      let isValid = true
+      for (const char of grapheme) {
+        if (!this.isValidInputChar(char)) {
+          isValid = false
+          break
+        }
+      }
+
+      if (isValid) {
+        validGraphemes.push(grapheme)
+      }
+    }
+
+    return validGraphemes.join('')
+  }
+
   // Internal: Handle key input
   /** @internal */
   handleKey(key: string, ctrl: boolean): void {
@@ -322,26 +390,20 @@ class InputNodeImpl extends LeafNode implements InputNode {
       return
     }
 
-    // Prevent ANSI escape injection - sanitize like buffer.write does
-    // Only allow printable ASCII and basic UTF-8 characters
-    // Reject escape sequences that could corrupt terminal
+    // Prevent DoS via extremely long keys
     if (key.length > 100) {
-      // Prevent DoS via extremely long keys
       console.warn('[input] Key too long, truncating to 100 chars')
       key = key.slice(0, 100)
     }
 
-    // Check for escape sequences (potential injection)
-    if (key.includes('\x1b') || key.includes('\x07') || key.includes('\x00')) {
-      console.warn('[input] Rejecting key with control characters')
+    // Sanitize input - removes ALL invalid characters, not just checking first char
+    const sanitizedKey = this.sanitizeInputKey(key)
+    if (sanitizedKey.length === 0 && key.length > 0) {
+      // All characters were invalid
+      console.warn('[input] Rejected key with invalid characters')
       return
     }
-
-    // Additional safety: reject keys with suspicious patterns
-    if (/[\x00-\x08\x0b-\x0c\x0e-\x1f\x7f]/.test(key)) {
-      console.warn('[input] Rejecting key with unprintable control characters')
-      return
-    }
+    key = sanitizedKey
 
     if (ctrl) {
       // Handle ctrl shortcuts
@@ -537,17 +599,8 @@ class InputNodeImpl extends LeafNode implements InputNode {
 
       default:
         // Insert printable character (or grapheme)
-        // Additional safety check for default case - handleKey validation above catches most issues
-        // but this ensures paste operations and multi-character inserts are also safe
+        // Key has already been sanitized by sanitizeInputKey above
         if (key.length >= 1 && this._value.length < this._maxLength) {
-          // Double-check for printable characters only (reject any remaining suspicious content)
-          // Allow: regular text, numbers, basic punctuation, common unicode
-          // Reject: remaining control chars that might have bypassed earlier checks
-          const code = key.codePointAt(0) ?? 0
-          if (code < 32 || (code >= 0x7f && code < 0xa0)) {
-            // Control character - should have been caught earlier, but be defensive
-            break
-          }
           const charIndex = this.graphemeToCharIndex(this._cursorPosition)
 
           // Calculate how many characters we can insert

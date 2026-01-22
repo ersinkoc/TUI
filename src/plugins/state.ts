@@ -164,6 +164,7 @@ function createStoreImpl<S>(options: StoreOptions<S>, onStateChange?: () => void
   /**
    * Dispatch an action through middleware chain.
    * Fixed: Each middleware call gets its own index to prevent race conditions
+   * Fixed: Prevents double-dispatch by tracking if next() was already called
    */
   function dispatch(action: Action): void {
     // Add timestamp
@@ -172,10 +173,26 @@ function createStoreImpl<S>(options: StoreOptions<S>, onStateChange?: () => void
       timestamp: Date.now()
     }
 
+    // Track which middleware indices have called next() for this dispatch
+    // This prevents a middleware from calling next() multiple times
+    const nextCalledSet = new Set<number>()
+
     // Build middleware chain with proper index isolation
     // Each call to buildChain creates a new function with its own captured index
     const buildChain = (currentIndex: number): ((a: Action) => void) => {
       return (a: Action): void => {
+        // Prevent double-dispatch: if next() already called for this index, ignore
+        if (nextCalledSet.has(currentIndex)) {
+          if (devTools) {
+            console.warn(
+              `[state] Middleware at index ${currentIndex} called next() multiple times. ` +
+              `Ignoring duplicate call to prevent double-dispatch.`
+            )
+          }
+          return
+        }
+        nextCalledSet.add(currentIndex)
+
         if (currentIndex < middleware.length) {
           const mw = middleware[currentIndex]
           if (mw) {

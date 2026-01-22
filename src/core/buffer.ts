@@ -4,7 +4,7 @@
  */
 
 import type { Buffer, Cell, CellStyle } from '../types'
-import { DEFAULT_FG, DEFAULT_BG, EMPTY_CHAR } from '../constants'
+import { DEFAULT_FG, DEFAULT_BG, EMPTY_CHAR, BUFFER_MAX_CELLS, BUFFER_MAX_NEGATIVE_OFFSET } from '../constants'
 import { getCharWidth, splitGraphemes, stringWidth } from '../utils/unicode'
 import { sanitizeAnsi } from '../utils/ansi'
 
@@ -84,9 +84,9 @@ export function createBuffer(width: number, height: number): Buffer {
       const maxNegativeOffset = -w - 100  // Allow some off-screen but prevent huge negative values
       const clampedX = Math.max(maxNegativeOffset, Math.min(x, w))
 
-      // Safety: if clamped position would require more than 10000 iterations to reach screen,
-      // just skip entirely (prevent DoS via extreme negative positions)
-      if (clampedX < -10000) {
+      // Safety: if clamped position would require more than BUFFER_MAX_NEGATIVE_OFFSET iterations
+      // to reach screen, skip entirely (prevent DoS via extreme negative positions)
+      if (clampedX < -BUFFER_MAX_NEGATIVE_OFFSET) {
         return
       }
 
@@ -204,6 +204,29 @@ export function createBuffer(width: number, height: number): Buffer {
     },
 
     fill(x: number, y: number, fillWidth: number, fillHeight: number, cell: Cell): void {
+      // Validate dimensions are finite numbers
+      if (!Number.isFinite(fillWidth) || !Number.isFinite(fillHeight)) {
+        console.warn(
+          `[buffer] fill() called with non-finite dimensions: ` +
+          `width=${fillWidth}, height=${fillHeight}. Operation skipped.`
+        )
+        return
+      }
+
+      // Warn on negative dimensions (likely a bug)
+      if (fillWidth < 0 || fillHeight < 0) {
+        console.warn(
+          `[buffer] fill() called with negative dimensions: ` +
+          `width=${fillWidth}, height=${fillHeight}. Use positive values.`
+        )
+        return
+      }
+
+      // Zero dimensions is valid but no-op
+      if (fillWidth === 0 || fillHeight === 0) {
+        return
+      }
+
       const startX = Math.max(0, x)
       const startY = Math.max(0, y)
       const endX = Math.min(w, x + fillWidth)
@@ -384,9 +407,11 @@ function createEmptyCells(width: number, height: number): Cell[] {
   const size = width * height
 
   // Validate size to prevent memory issues
-  if (size <= 0 || size > 1000000) {
-    // Max 1M cells (1000x1000) to prevent OOM
-    throw new Error(`Invalid buffer size: ${width}x${height}`)
+  if (size <= 0 || size > BUFFER_MAX_CELLS) {
+    throw new Error(
+      `Invalid buffer size: ${width}x${height} (${size} cells). ` +
+      `Maximum is ${BUFFER_MAX_CELLS} cells.`
+    )
   }
 
   const cells: Cell[] = new Array(size)

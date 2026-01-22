@@ -412,6 +412,92 @@ function isRegionalIndicator(code: number): boolean {
 }
 
 /**
+ * Check if a string is an emoji sequence that should be treated as a single
+ * double-width character.
+ *
+ * Detects:
+ * - ZWJ (Zero Width Joiner) sequences: 👨‍👩‍👧‍👦 (family), 👩‍💻 (woman technologist)
+ * - Skin tone modifiers: 👋🏽 (waving hand with skin tone)
+ * - Keycap sequences: 1️⃣ (keycap digit one)
+ * - Flag sequences: 🇹🇷 (flag: Turkey)
+ * - Tag sequences: 🏴󠁧󠁢󠁥󠁮󠁧󠁿 (flag: England)
+ *
+ * @param grapheme - A single grapheme cluster
+ * @returns True if this is an emoji sequence
+ */
+function isEmojiSequence(grapheme: string): boolean {
+  if (grapheme.length === 0) return false
+
+  // Get all code points in the grapheme
+  const codePoints: number[] = []
+  for (const char of grapheme) {
+    const code = char.codePointAt(0)
+    if (code !== undefined) {
+      codePoints.push(code)
+    }
+  }
+
+  if (codePoints.length === 0) return false
+
+  // Check for ZWJ (U+200D) - Zero Width Joiner
+  // Used in family emoji, profession emoji, etc.
+  const ZWJ = 0x200d
+  if (codePoints.includes(ZWJ)) {
+    return true
+  }
+
+  // Check for skin tone modifiers (U+1F3FB to U+1F3FF)
+  // Fitzpatrick skin types
+  for (const code of codePoints) {
+    if (code >= 0x1f3fb && code <= 0x1f3ff) {
+      return true
+    }
+  }
+
+  // Check for keycap sequence (digit + FE0F + 20E3)
+  // e.g., 1️⃣ = 0x31 + 0xFE0F + 0x20E3
+  const KEYCAP_COMBINING = 0x20e3
+  if (codePoints.includes(KEYCAP_COMBINING)) {
+    return true
+  }
+
+  // Check for variation selector-16 (U+FE0F) - emoji presentation
+  const VS16 = 0xfe0f
+  if (codePoints.includes(VS16)) {
+    return true
+  }
+
+  // Check for regional indicators (flags)
+  // Two regional indicator symbols form a flag
+  if (codePoints.length >= 2 && isRegionalIndicator(codePoints[0]!)) {
+    return true
+  }
+
+  // Check for tag sequences (subdivision flags like 🏴󠁧󠁢󠁥󠁮󠁧󠁿)
+  // Tags are in range U+E0000 to U+E007F
+  for (const code of codePoints) {
+    if (code >= 0xe0000 && code <= 0xe007f) {
+      return true
+    }
+  }
+
+  // Check if it's a base emoji in the emoji ranges
+  const firstCode = codePoints[0]!
+
+  // Common emoji ranges that are typically double-width
+  if (
+    (firstCode >= 0x1f300 && firstCode <= 0x1f9ff) || // Misc Symbols, Emoticons, etc
+    (firstCode >= 0x1fa00 && firstCode <= 0x1faff) || // Symbols Extended-A
+    (firstCode >= 0x2600 && firstCode <= 0x26ff) ||   // Misc Symbols
+    (firstCode >= 0x2700 && firstCode <= 0x27bf)      // Dingbats
+  ) {
+    return true
+  }
+
+  return false
+}
+
+/**
  * Split string into grapheme clusters using Intl.Segmenter.
  *
  * IMPORTANT: Intl.Segmenter is REQUIRED for correct Unicode handling.
@@ -470,6 +556,15 @@ export function splitGraphemes(str: string): string[] {
  * Get display width of a string using grapheme cluster awareness.
  * More accurate than stringWidth for emoji and complex scripts.
  *
+ * Handles:
+ * - ZWJ sequences (family emoji, profession emoji): width 2
+ * - Skin tone modifiers: width 2
+ * - Flag sequences: width 2
+ * - Keycap sequences: width 2
+ * - CJK characters: width 2
+ * - Regular ASCII: width 1
+ * - Control characters: width 0
+ *
  * @param str - Input string
  * @returns Total display width
  *
@@ -477,6 +572,7 @@ export function splitGraphemes(str: string): string[] {
  * ```typescript
  * graphemeWidth('👨‍👩‍👧‍👦')  // 2 (family emoji takes 2 cells)
  * graphemeWidth('🇹🇷')        // 2 (flag takes 2 cells)
+ * graphemeWidth('👋🏽')        // 2 (emoji with skin tone)
  * graphemeWidth('hello')      // 5
  * ```
  */
@@ -485,10 +581,16 @@ export function graphemeWidth(str: string): number {
   let width = 0
 
   for (const grapheme of graphemes) {
+    // Check if it's an emoji sequence first (ZWJ, skin tones, flags, etc.)
+    if (isEmojiSequence(grapheme)) {
+      width += 2
+      continue
+    }
+
     // Get the base character width (first code point determines width)
     const code = grapheme.codePointAt(0) ?? 0
 
-    // Emoji and flags are typically 2 cells wide
+    // CJK and other wide characters
     if (isWideCodePoint(code) || isRegionalIndicator(code)) {
       width += 2
     } else if (code >= 32) {
@@ -503,6 +605,13 @@ export function graphemeWidth(str: string): number {
 /**
  * Truncate string by grapheme clusters to fit within display width.
  * More accurate than truncateToWidth for emoji and complex scripts.
+ *
+ * Handles:
+ * - ZWJ sequences (family emoji, profession emoji): width 2
+ * - Skin tone modifiers: width 2
+ * - Flag sequences: width 2
+ * - Keycap sequences: width 2
+ * - CJK characters: width 2
  *
  * @param str - Input string
  * @param maxWidth - Maximum display width
@@ -522,13 +631,20 @@ export function truncateByGrapheme(str: string, maxWidth: number, ellipsis: stri
   let result = ''
 
   for (const grapheme of graphemes) {
-    const code = grapheme.codePointAt(0) ?? 0
-    let graphemeW = 1
+    let graphemeW: number
 
-    if (isWideCodePoint(code) || isRegionalIndicator(code)) {
+    // Check emoji sequences first (ZWJ, skin tones, flags, etc.)
+    if (isEmojiSequence(grapheme)) {
       graphemeW = 2
-    } else if (code < 32) {
-      graphemeW = 0
+    } else {
+      const code = grapheme.codePointAt(0) ?? 0
+      if (isWideCodePoint(code) || isRegionalIndicator(code)) {
+        graphemeW = 2
+      } else if (code < 32) {
+        graphemeW = 0
+      } else {
+        graphemeW = 1
+      }
     }
 
     if (width + graphemeW > targetWidth) {

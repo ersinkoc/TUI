@@ -161,18 +161,21 @@ function layoutChildren(node: Node, depth: number): void {
       break
   }
 
+  // Track accumulated remainder for precise pixel distribution
+  // This prevents losing pixels when dividing space (e.g., 100/3 = 33+33+33 = 99, losing 1px)
+  let accumulatedRemainder = 0
+
   // Position each child
-  for (const child of children) {
+  for (let i = 0; i < children.length; i++) {
+    const child = children[i]!
+    const isLastChild = i === children.length - 1
     const childLayout = getLayoutProps(child)
     const flex = childLayout.flex ?? 0
 
-    // Main axis size
+    // Main axis size (floating point for precision)
     let childMainSize: number
     if (flex > 0 && totalFlex > 0) {
       childMainSize = (availableForFlex * flex) / totalFlex
-    } else if (flex > 0) {
-      // Safety: totalFlex is 0 but flex > 0 (shouldn't happen, but handle gracefully)
-      childMainSize = availableForFlex
     } else {
       childMainSize = isRow
         ? resolveDimension(childLayout.width, contentWidth)
@@ -239,19 +242,48 @@ function layoutChildren(node: Node, depth: number): void {
         break
     }
 
+    // Calculate final main size with precision correction
+    let finalMainSize: number
+    if (isLastChild && flex > 0) {
+      // Last flex child gets remaining space to prevent pixel loss
+      const contentEnd = isRow ? contentX + contentWidth : contentY + contentHeight
+      finalMainSize = Math.max(0, Math.floor(contentEnd - mainOffset))
+      // Re-apply constraints to the expanded size (maxWidth/maxHeight must still be respected)
+      if (isRow) {
+        finalMainSize = applyConstraints(
+          finalMainSize,
+          childLayout.minWidth,
+          childLayout.maxWidth,
+          contentWidth
+        )
+      } else {
+        finalMainSize = applyConstraints(
+          finalMainSize,
+          childLayout.minHeight,
+          childLayout.maxHeight,
+          contentHeight
+        )
+      }
+    } else {
+      // Add accumulated remainder before flooring for better distribution
+      const adjustedSize = childMainSize + accumulatedRemainder
+      finalMainSize = Math.floor(adjustedSize)
+      accumulatedRemainder = adjustedSize - finalMainSize
+    }
+
     // Set child bounds
     const childBounds: Bounds = isRow
       ? {
           x: Math.floor(mainOffset),
           y: Math.floor(childCrossOffset),
-          width: Math.floor(childMainSize),
+          width: finalMainSize,
           height: Math.floor(childCrossSize)
         }
       : {
           x: Math.floor(childCrossOffset),
           y: Math.floor(mainOffset),
           width: Math.floor(childCrossSize),
-          height: Math.floor(childMainSize)
+          height: finalMainSize
         }
 
     setBounds(child, childBounds)

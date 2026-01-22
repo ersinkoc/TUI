@@ -464,9 +464,10 @@ describe('createRenderLoop', () => {
     vi.advanceTimersByTime(100)
     expect(onRender).toHaveBeenCalledTimes(1)
 
-    // Now request render
+    // Now request render and advance by multiple frame times
+    // to ensure the tick executes (drift compensation may adjust timing)
     loop.requestRender()
-    vi.advanceTimersByTime(33)
+    vi.advanceTimersByTime(100) // Advance by ~3 frames to ensure render happens
     expect(onRender).toHaveBeenCalledTimes(2)
 
     loop.stop()

@@ -14,6 +14,20 @@ import { DisposedNodeError, NodeMaxChildrenError } from '../errors'
 // Use regular number counter (safe up to 2^53 - 1 IDs)
 let idCounter = 0
 
+// Session ID: unique identifier for this process instance
+// Prevents ID collisions across multiple processes or rapid restarts
+// Generated once per process using high-resolution time + random component
+const SESSION_ID = (() => {
+  // Use high-resolution time if available (Node.js)
+  const hrTime = typeof process !== 'undefined' && process.hrtime
+    ? process.hrtime()
+    : [Date.now(), Math.floor(Math.random() * 1000000)]
+  // Combine nanosecond precision with random for uniqueness
+  const timePart = ((hrTime[0] * 1000000 + hrTime[1]) % 0xffffff).toString(36)
+  const randomPart = Math.floor(Math.random() * 0xffff).toString(36)
+  return `${timePart}${randomPart}`
+})()
+
 // NOTE: Global _nodeIndex removed to prevent memory leaks.
 // Tree traversal (O(depth)) is used instead of O(1) index lookup.
 // This is acceptable because tree depth is bounded by TREE_MAX_DEPTH (1000).
@@ -21,15 +35,18 @@ let idCounter = 0
 /**
  * Generate a unique node ID.
  *
- * Combines timestamp (masked to 24 bits) with counter for uniqueness.
+ * Combines session ID, timestamp (masked to 20 bits), and counter for uniqueness.
+ * Session ID ensures uniqueness across process restarts and multiple instances.
  * Uses base36 encoding for compact IDs.
+ *
+ * Format: node_{sessionId}_{timestamp}_{counter}
  *
  * @returns Unique ID string
  */
 export function generateId(): string {
   const id = ++idCounter
-  const time = Date.now() & 0xffffff
-  return `node_${time}_${id.toString(36)}`
+  const time = Date.now() & 0xfffff // 20 bits for timestamp
+  return `node_${SESSION_ID}_${time.toString(36)}_${id.toString(36)}`
 }
 
 /**
@@ -292,7 +309,28 @@ export abstract class BaseNode implements Node {
    */
   protected assertNotDisposed(): void {
     if (this._disposed) {
-      throw new Error(`Cannot perform operation on disposed node (id: ${this.id})`)
+      throw new DisposedNodeError(this.id, 'operation')
+    }
+  }
+
+  /**
+   * Throws a DisposedNodeError if node has been disposed.
+   * Use this at the start of methods that shouldn't be called after dispose.
+   *
+   * @param operation - Name of the operation being attempted (for error message)
+   * @throws {DisposedNodeError} If node is disposed
+   *
+   * @example
+   * ```typescript
+   * handleKey(key: string): void {
+   *   this.requireNotDisposed('handleKey')
+   *   // ...
+   * }
+   * ```
+   */
+  protected requireNotDisposed(operation: string): void {
+    if (this._disposed) {
+      throw new DisposedNodeError(this.id, operation)
     }
   }
 

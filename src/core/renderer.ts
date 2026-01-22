@@ -171,10 +171,10 @@ export function createRenderer(stdout: NodeJS.WriteStream, options: RendererOpti
       // But don't set to null - recreate immediately to avoid next-frame lag
       snapshotCells = new Array(size)
 
-      // Initialize with empty cells (reuse this pattern for V8 optimization)
-      const emptyCell = { char: ' ', fg: 0, bg: 0, attrs: 0 }
+      // Initialize with individual empty cells - each cell gets its own object
+      // to prevent shared reference mutation bugs when updating cells in-place
       for (let i = 0; i < size; i++) {
-        snapshotCells[i] = emptyCell  // Same reference for all empty cells
+        snapshotCells[i] = { char: ' ', fg: 0, bg: 0, attrs: 0 }
       }
       snapshotWidth = w
       snapshotHeight = h
@@ -198,40 +198,35 @@ export function createRenderer(stdout: NodeJS.WriteStream, options: RendererOpti
     if (snapshotCells === null || snapshotCells.length !== size) {
       snapshotCells = new Array(size)
 
-      // Use same empty cell reference for V8 optimization
-      const emptyCell = { char: ' ', fg: 0, bg: 0, attrs: 0 }
+      // Each cell gets its own object to prevent shared reference mutation
       for (let i = 0; i < size; i++) {
-        snapshotCells[i] = emptyCell
+        snapshotCells[i] = { char: ' ', fg: 0, bg: 0, attrs: 0 }
       }
       snapshotWidth = w
       snapshotHeight = h
     }
 
-    // Copy cell data in-place, creating new objects only when needed
-    // This minimizes allocations: only create objects for non-empty cells
+    // Copy cell data in-place - each cell now has its own object so mutation is safe
     for (let i = 0; i < size; i++) {
       const src = cells[i]
+      const dst = snapshotCells[i]
 
-      if (src) {
-        const dst = snapshotCells[i]
-
-        // Check if we need to create a new object or can update in place
-        // If dst is the shared emptyCell reference, we must create a new object
-        if (dst && dst.char === ' ' && dst.fg === 0 && dst.bg === 0 && dst.attrs === 0 && src.char !== ' ') {
-          // Empty cell, need to create new object for non-empty source
-          snapshotCells[i] = { char: src.char, fg: src.fg, bg: src.bg, attrs: src.attrs }
-        } else if (dst) {
-          // Reuse existing object
-          dst.char = src.char
-          dst.fg = src.fg
-          dst.bg = src.bg
-          dst.attrs = src.attrs
-        } else {
-          // dst is null or undefined, create new object
-          snapshotCells[i] = { char: src.char, fg: src.fg, bg: src.bg, attrs: src.attrs }
-        }
+      if (src && dst) {
+        // Safe to mutate - each cell has its own object
+        dst.char = src.char
+        dst.fg = src.fg
+        dst.bg = src.bg
+        dst.attrs = src.attrs
+      } else if (src) {
+        // dst is null/undefined, create new object
+        snapshotCells[i] = { char: src.char, fg: src.fg, bg: src.bg, attrs: src.attrs }
+      } else if (dst) {
+        // src is null/undefined, reset to empty
+        dst.char = ' '
+        dst.fg = 0
+        dst.bg = 0
+        dst.attrs = 0
       }
-      // If src is null/undefined, leave dst as is (it's either empty cell or valid content)
     }
   }
 
@@ -645,7 +640,10 @@ export interface RenderLoop {
 }
 
 /**
- * Create a render loop.
+ * Create a render loop with drift compensation.
+ *
+ * Uses performance.now() for precise timing and compensates for
+ * setTimeout drift to maintain consistent frame rate.
  *
  * @param fps - Target frames per second
  * @param onRender - Render callback
@@ -660,21 +658,47 @@ export interface RenderLoop {
  * ```
  */
 export function createRenderLoop(fps: number, onRender: () => void): RenderLoop {
-  const frameTime = Math.floor(1000 / fps)
+  const frameTime = 1000 / fps
   let timer: ReturnType<typeof setTimeout> | null = null
   let renderRequested = true
   let running = false
+  let lastTickTime = 0
 
   const tick = () => {
     /* c8 ignore next */
     if (!running) return
 
+    const now = performance.now()
+
     if (renderRequested) {
       renderRequested = false
-      onRender()
+      try {
+        onRender()
+      } catch (err) {
+        console.error('[renderer] Error in render callback:', err)
+      }
     }
 
-    timer = setTimeout(tick, frameTime)
+    // Calculate next tick time with drift compensation
+    if (lastTickTime === 0) {
+      lastTickTime = now
+    }
+
+    // Target time for next frame
+    const targetTime = lastTickTime + frameTime
+
+    // Actual delay needed (minimum 1ms to prevent tight loop)
+    const delay = Math.max(1, targetTime - performance.now())
+
+    // Update last tick time (with drift correction)
+    // If we're more than a frame behind, reset timing to prevent catch-up burst
+    if (now > targetTime + frameTime) {
+      lastTickTime = now
+    } else {
+      lastTickTime = targetTime
+    }
+
+    timer = setTimeout(tick, delay)
   }
 
   return {
@@ -682,6 +706,7 @@ export function createRenderLoop(fps: number, onRender: () => void): RenderLoop 
       if (running) return
       running = true
       renderRequested = true
+      lastTickTime = 0 // Reset timing on start
       tick()
     },
 
@@ -691,6 +716,7 @@ export function createRenderLoop(fps: number, onRender: () => void): RenderLoop 
         clearTimeout(timer)
         timer = null
       }
+      lastTickTime = 0
     },
 
     requestRender(): void {

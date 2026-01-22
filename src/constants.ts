@@ -446,3 +446,89 @@ export const MAX_ESCAPE_SEQUENCE_LENGTH = 64
  * @default 10000
  */
 export const MAX_CHILDREN_PER_NODE = 10000
+
+// ============================================================
+// Buffer Safety Limits
+// ============================================================
+
+/**
+ * Maximum buffer cells (prevents OOM).
+ *
+ * Maximum number of cells a buffer can have. Prevents memory exhaustion
+ * from extremely large buffers. 1 million cells = 1000x1000 terminal.
+ *
+ * @default 1_000_000
+ */
+export const BUFFER_MAX_CELLS = 1_000_000
+
+/**
+ * Maximum negative offset for buffer writes.
+ *
+ * Prevents DoS attacks via extremely negative x positions that
+ * would cause excessive loop iterations.
+ *
+ * @default 10000
+ */
+export const BUFFER_MAX_NEGATIVE_OFFSET = 10000
+
+// ============================================================
+// Input Validation Limits
+// ============================================================
+
+/**
+ * Maximum key length for input validation.
+ *
+ * Prevents processing of excessively long key sequences.
+ *
+ * @default 100
+ */
+export const INPUT_MAX_KEY_LENGTH = 100
+
+/**
+ * Maximum paste length for input widgets.
+ *
+ * Prevents memory exhaustion from extremely large paste operations.
+ *
+ * @default 10000
+ */
+export const INPUT_MAX_PASTE_LENGTH = 10000
+
+// ============================================================
+// Node Traversal Limits
+// ============================================================
+
+/**
+ * Maximum iterations for BFS traversal.
+ *
+ * Prevents infinite loops during breadth-first tree traversal.
+ *
+ * @default 100000
+ */
+export const NODE_BFS_MAX_ITERATIONS = 100000
+
+/**
+ * Maximum queue size for BFS traversal.
+ *
+ * Prevents memory exhaustion from extremely wide trees.
+ *
+ * @default 50000
+ */
+export const NODE_BFS_MAX_QUEUE_SIZE = 50000
+
+// ============================================================
+// Animation Constants
+// ============================================================
+
+/**
+ * Default animation duration in milliseconds.
+ *
+ * @default 300
+ */
+export const ANIMATION_DEFAULT_DURATION = 300
+
+/**
+ * Minimum frame time in milliseconds (~60fps).
+ *
+ * @default 16
+ */
+export const ANIMATION_MIN_FRAME_TIME = 16

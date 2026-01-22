@@ -50,10 +50,11 @@ describe('Node System', () => {
       const id2 = generateId()
       const id3 = generateId()
 
-      // New format: node_${time}_${id_base36}
-      expect(id1).toMatch(/^node_\d+_[a-z0-9]+$/)
-      expect(id2).toMatch(/^node_\d+_[a-z0-9]+$/)
-      expect(id3).toMatch(/^node_\d+_[a-z0-9]+$/)
+      // New format: node_${sessionId}_${time}_${id_base36}
+      // Session ID contains alphanumeric chars
+      expect(id1).toMatch(/^node_[a-z0-9]+_[a-z0-9]+_[a-z0-9]+$/i)
+      expect(id2).toMatch(/^node_[a-z0-9]+_[a-z0-9]+_[a-z0-9]+$/i)
+      expect(id3).toMatch(/^node_[a-z0-9]+_[a-z0-9]+_[a-z0-9]+$/i)
 
       // IDs should be unique
       expect(id1).not.toBe(id2)
@@ -64,9 +65,9 @@ describe('Node System', () => {
       const id1 = generateId()
       const id2 = generateId()
 
-      // Extract counter parts and verify they're different
-      const counter1 = id1.split('_')[2]
-      const counter2 = id2.split('_')[2]
+      // Extract counter parts (now at index 3) and verify they're different
+      const counter1 = id1.split('_')[3]
+      const counter2 = id2.split('_')[3]
       expect(counter1).not.toBe(counter2)
     })
   })
@@ -78,8 +79,8 @@ describe('Node System', () => {
       resetIdCounter()
       const id = generateId()
 
-      // After reset, should generate valid ID
-      expect(id).toMatch(/^node_\d+_[a-z0-9]+$/)
+      // After reset, should generate valid ID with new format
+      expect(id).toMatch(/^node_[a-z0-9]+_[a-z0-9]+_[a-z0-9]+$/i)
     })
   })
 
@@ -89,9 +90,9 @@ describe('Node System', () => {
         const node1 = new MockContainerNode()
         const node2 = new MockContainerNode()
 
-        // New format: node_${time}_${id_base36}
-        expect(node1.id).toMatch(/^node_\d+_[a-z0-9]+$/)
-        expect(node2.id).toMatch(/^node_\d+_[a-z0-9]+$/)
+        // New format: node_${sessionId}_${time}_${id_base36}
+        expect(node1.id).toMatch(/^node_[a-z0-9]+_[a-z0-9]+_[a-z0-9]+$/i)
+        expect(node2.id).toMatch(/^node_[a-z0-9]+_[a-z0-9]+_[a-z0-9]+$/i)
         expect(node1.id).not.toBe(node2.id)
       })
 
