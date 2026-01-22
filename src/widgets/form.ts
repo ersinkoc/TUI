@@ -1118,7 +1118,7 @@ class FormNodeImpl extends ContainerNode implements FormNode {
       case 'number':
       case 'password':
       case 'textarea': {
-        let text = String(state.value ?? '')
+        const text = String(state.value ?? '')
         const displayText = field.type === 'password' ? '*'.repeat(text.length) : text
 
         // Handle cursor visibility

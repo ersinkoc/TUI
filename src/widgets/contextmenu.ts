@@ -359,8 +359,8 @@ class ContextMenuNodeImpl extends LeafNode implements ContextMenuNode {
     const borderOffset = this._border !== 'none' ? 1 : 0
 
     // Adjust position if menu would go off screen
-    let posX = this._posX
-    let posY = this._posY
+    const posX = this._posX
+    const posY = this._posY
 
     // Draw background
     for (let row = posY; row < posY + menuHeight; row++) {

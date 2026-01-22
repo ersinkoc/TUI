@@ -297,8 +297,8 @@ class BadgeNodeImpl extends LeafNode implements BadgeNode {
 
     // Get colors
     const variantColors = VARIANT_COLORS[this._variant]
-    let fg = this._fg ?? (this._outline ? variantColors.bg : variantColors.fg)
-    let bg = this._bg ?? (this._outline ? (parentStyle.bg ?? DEFAULT_BG) : variantColors.bg)
+    const fg = this._fg ?? (this._outline ? variantColors.bg : variantColors.fg)
+    const bg = this._bg ?? (this._outline ? (parentStyle.bg ?? DEFAULT_BG) : variantColors.bg)
 
     // Build badge content
     let content = ''

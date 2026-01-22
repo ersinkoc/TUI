@@ -19,9 +19,12 @@ let idCounter = 0
 // Generated once per process using high-resolution time + random component
 const SESSION_ID = (() => {
   // Use high-resolution time if available (Node.js)
-  const hrTime = typeof process !== 'undefined' && process.hrtime
-    ? process.hrtime()
-    : [Date.now(), Math.floor(Math.random() * 1000000)]
+  let hrTime: [number, number]
+  if (typeof process !== 'undefined' && typeof process.hrtime === 'function') {
+    hrTime = process.hrtime()
+  } else {
+    hrTime = [Date.now(), Math.floor(Math.random() * 1000000)]
+  }
   // Combine nanosecond precision with random for uniqueness
   const timePart = ((hrTime[0] * 1000000 + hrTime[1]) % 0xffffff).toString(36)
   const randomPart = Math.floor(Math.random() * 0xffff).toString(36)

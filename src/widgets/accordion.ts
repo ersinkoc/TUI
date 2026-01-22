@@ -527,7 +527,7 @@ class AccordionNodeImpl extends ContainerNode implements AccordionNode {
 
       // Render header
       const icon = isExpanded ? this._collapseIcon : this._expandIcon
-      let headerAttrs = panel.disabled ? ATTR_DIM : (isFocused ? ATTR_INVERSE : 0)
+      const headerAttrs = panel.disabled ? ATTR_DIM : (isFocused ? ATTR_INVERSE : 0)
 
       // Icon
       buffer.write(x, currentY, icon, { fg, bg, attrs: headerAttrs })

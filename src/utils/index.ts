@@ -284,3 +284,19 @@ export {
 } from './events'
 
 export type { EventHandler, EventMap, IEventEmitter } from './events'
+
+// Logger utilities
+export {
+  LogLevel,
+  setLogLevel,
+  getLogLevel,
+  setLoggingEnabled,
+  isLoggingEnabled,
+  setLogHandler,
+  log,
+  logError,
+  logWarn,
+  logInfo,
+  logDebug,
+  createLogger
+} from './logger'
