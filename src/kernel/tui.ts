@@ -537,24 +537,6 @@ export function tui(options: TUIOptions = {}): TUIApp {
 
       state.running = true
 
-      // Resolve plugin load order based on dependencies
-      const resolvedPlugins = resolvePluginOrder(plugins)
-
-      // Install plugins in resolved order
-      for (const plugin of resolvedPlugins) {
-        try {
-          plugin.install(app)
-          state.plugins.push(plugin)
-          /* c8 ignore start */
-        } catch (error) {
-          throw new TUIError(
-            `Failed to install plugin "${plugin.name}": ${error instanceof Error ? error.message : 'Unknown error'}`,
-            'PLUGIN_ERROR'
-          )
-        }
-        /* c8 ignore stop */
-      }
-
       // Set up signal handlers for clean exit
       cleanupSignalHandlers = setupSignalHandlers(() => {
         void app.quit()
@@ -716,29 +698,41 @@ export function tui(options: TUIOptions = {}): TUIApp {
 
     // Plugin API
     use(plugin: Plugin): TUIApp {
-      if (state.running) {
-        // Hot-load plugin
-        try {
-          plugin.install(app)
-          state.plugins.push(plugin)
-          /* c8 ignore start */
-        } catch (error) {
-          throw new TUIError(
-            `Failed to install plugin "${plugin.name}": ${error instanceof Error ? error.message : 'Unknown error'}`,
-            'PLUGIN_ERROR'
-          )
-        }
-        /* c8 ignore stop */
-      } else {
-        // Queue for installation on start
-        plugins.push(plugin)
+      // Install plugin immediately (plugins are now installed at construction time)
+      try {
+        plugin.install(app)
+        state.plugins.push(plugin)
+        /* c8 ignore start */
+      } catch (error) {
+        throw new TUIError(
+          `Failed to install plugin "${plugin.name}": ${error instanceof Error ? error.message : 'Unknown error'}`,
+          'PLUGIN_ERROR'
+        )
       }
+      /* c8 ignore stop */
       return app
     },
 
     getPlugin<T extends Plugin>(name: string): T | undefined {
       return state.plugins.find(p => p.name === name) as T | undefined
     }
+  }
+
+  // Install plugins immediately at construction time
+  // This allows plugin APIs (like state.createStore) to be available before start()
+  const resolvedPlugins = resolvePluginOrder(plugins)
+  for (const plugin of resolvedPlugins) {
+    try {
+      plugin.install(app)
+      state.plugins.push(plugin)
+      /* c8 ignore start */
+    } catch (error) {
+      throw new TUIError(
+        `Failed to install plugin "${plugin.name}": ${error instanceof Error ? error.message : 'Unknown error'}`,
+        'PLUGIN_ERROR'
+      )
+    }
+    /* c8 ignore stop */
   }
 
   return app

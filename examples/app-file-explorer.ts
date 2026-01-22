@@ -382,15 +382,16 @@ async function main() {
 
   // Show toast notification
   function showToast(message: string, type: 'info' | 'success' | 'error' = 'info') {
-    const colors: Record<string, string> = {
-      info: '#3498db',
-      success: '#2ecc71',
-      error: '#e74c3c'
+    switch (type) {
+      case 'success':
+        toastWidget.success(message)
+        break
+      case 'error':
+        toastWidget.error(message)
+        break
+      default:
+        toastWidget.info(message)
     }
-    toastWidget
-      .message(message)
-      .bg(colors[type])
-      .show(3000)
   }
 
   // Update UI from state
@@ -403,11 +404,15 @@ async function main() {
       const selected = state.selectedFiles.has(f.path) ? '*' : ' '
       const size = f.isDirectory ? '   DIR' : formatSize(f.size)
       const date = formatDate(f.modified)
-      return `${selected} ${icon} ${f.name.padEnd(30).slice(0, 30)} ${size} ${date}`
+      return {
+        id: f.path,
+        label: `${selected} ${icon} ${f.name.padEnd(30).slice(0, 30)} ${size} ${date}`,
+        value: f
+      }
     })
 
     fileList.items(items)
-    fileList.selectedIndex(state.selectedIndex)
+    fileList.selectIndex(state.selectedIndex)
 
     // Update breadcrumb
     const pathParts = state.currentPath.split(path.sep).filter(Boolean)
@@ -433,10 +438,10 @@ async function main() {
     }
 
     statusBar.items([
-      { label: statusText },
-      { label: state.showHidden ? 'Hidden: ON' : 'Hidden: OFF' },
-      { label: `Sort: ${state.sortBy}` },
-      { label: shortcuts.isVimMode() ? `VIM: ${shortcuts.getVimMode()}` : 'NORMAL' }
+      { id: 'status', text: statusText },
+      { id: 'hidden', text: state.showHidden ? 'Hidden: ON' : 'Hidden: OFF' },
+      { id: 'sort', text: `Sort: ${state.sortBy}` },
+      { id: 'mode', text: shortcuts.isVimMode() ? `VIM: ${shortcuts.getVimMode()}` : 'NORMAL' }
     ])
   }
 
@@ -790,8 +795,8 @@ async function main() {
   })
     .width('100%')
     .height(1)
-    .onSelect((item) => {
-      loadDirectory(item.value as string)
+    .onNavigate((item) => {
+      loadDirectory(item.value)
     })
 
   // File list

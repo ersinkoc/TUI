@@ -3,7 +3,7 @@
  * @packageDocumentation
  */
 
-import type { Node, Buffer, CellStyle } from '../types'
+import type { Node, Buffer, CellStyle, Dimension } from '../types'
 import { LeafNode } from './node'
 import { DEFAULT_FG, DEFAULT_BG } from '../utils/color'
 import { stringWidth, truncateToWidth, padToWidth } from '../utils/unicode'
@@ -69,6 +69,11 @@ export interface StatusbarProps {
  */
 export interface StatusbarNode extends Node {
   readonly type: 'statusbar'
+
+  // Layout methods
+  width(value: Dimension): this
+  height(value: Dimension): this
+  flex(value: number): this
 
   // Configuration
   items(itemList: StatusItem[]): this
@@ -143,6 +148,25 @@ class StatusbarNodeImpl extends LeafNode implements StatusbarNode {
 
   get progressMax(): number {
     return this._progressMax
+  }
+
+  // Layout methods
+  width(value: Dimension): this {
+    this._layout.width = value
+    this.markDirty()
+    return this
+  }
+
+  height(value: Dimension): this {
+    this._layout.height = value
+    this.markDirty()
+    return this
+  }
+
+  flex(value: number): this {
+    this._layout.flex = value
+    this.markDirty()
+    return this
   }
 
   // Configuration

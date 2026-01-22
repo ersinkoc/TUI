@@ -61,6 +61,8 @@ export interface ListNode<T = unknown> extends Node {
   multiSelect(enabled: boolean): this
   width(value: Dimension): this
   height(value: Dimension): this
+  flex(value: number): this
+  border(style: 'single' | 'double' | 'rounded' | 'none'): this
 
   // Navigation
   selectIndex(index: number): this
@@ -230,6 +232,18 @@ class ListNodeImpl<T = unknown> extends LeafNode implements ListNode<T> {
 
   height(value: Dimension): this {
     this._layout.height = value
+    this.markDirty()
+    return this
+  }
+
+  flex(value: number): this {
+    this._layout.flex = value
+    this.markDirty()
+    return this
+  }
+
+  border(style: 'single' | 'double' | 'rounded' | 'none'): this {
+    this._style.border = style
     this.markDirty()
     return this
   }

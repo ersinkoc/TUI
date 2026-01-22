@@ -3,7 +3,7 @@
  * @packageDocumentation
  */
 
-import type { Node, Buffer, CellStyle } from '../types'
+import type { Node, Buffer, CellStyle, Dimension } from '../types'
 import { LeafNode } from './node'
 import { DEFAULT_FG, DEFAULT_BG } from '../utils/color'
 import { stringWidth, truncateToWidth } from '../utils/unicode'
@@ -52,6 +52,11 @@ export interface BreadcrumbProps {
  */
 export interface BreadcrumbNode extends Node {
   readonly type: 'breadcrumb'
+
+  // Layout methods
+  width(value: Dimension): this
+  height(value: Dimension): this
+  flex(value: number): this
 
   // Configuration
   items(itemList: BreadcrumbItem[]): this
@@ -141,6 +146,25 @@ class BreadcrumbNodeImpl extends LeafNode implements BreadcrumbNode {
 
   get depth(): number {
     return this._items.length
+  }
+
+  // Layout methods
+  width(value: Dimension): this {
+    this._layout.width = value
+    this.markDirty()
+    return this
+  }
+
+  height(value: Dimension): this {
+    this._layout.height = value
+    this.markDirty()
+    return this
+  }
+
+  flex(value: number): this {
+    this._layout.flex = value
+    this.markDirty()
+    return this
   }
 
   // Configuration

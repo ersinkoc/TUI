@@ -283,15 +283,15 @@ describe('tui', () => {
       app.quit()
     })
 
-    it('queues plugin for later when not running', () => {
+    it('installs plugin immediately when use() is called', () => {
       const plugin = createMockPlugin()
       const app = tui()
 
+      // Plugins are now installed immediately when use() is called
       app.use(plugin)
-      expect(plugin.install).not.toHaveBeenCalled()
+      expect(plugin.install).toHaveBeenCalled()
 
       app.start()
-      expect(plugin.install).toHaveBeenCalled()
       app.quit()
     })
 
@@ -302,9 +302,9 @@ describe('tui', () => {
           throw new Error('Install failed')
         })
       }
-      const app = tui({ plugins: [plugin] })
 
-      expect(() => app.start()).toThrow('Failed to install plugin "bad-plugin"')
+      // Plugins are now installed at construction time, so error is thrown immediately
+      expect(() => tui({ plugins: [plugin] })).toThrow('Failed to install plugin "bad-plugin"')
     })
   })
 
@@ -982,9 +982,8 @@ describe('plugin dependency resolution', () => {
       install: vi.fn()
     }
 
-    const app = tui({ plugins: [plugin] })
-
-    expect(() => app.start()).toThrow('depends on "missing-plugin" which is not available')
+    // Plugins are now installed at construction time, so error is thrown immediately
+    expect(() => tui({ plugins: [plugin] })).toThrow('depends on "missing-plugin" which is not available')
   })
 
   it('throws on circular dependency', () => {
@@ -999,9 +998,8 @@ describe('plugin dependency resolution', () => {
       install: vi.fn()
     }
 
-    const app = tui({ plugins: [pluginA, pluginB] })
-
-    expect(() => app.start()).toThrow('circular dependency')
+    // Plugins are now installed at construction time, so error is thrown immediately
+    expect(() => tui({ plugins: [pluginA, pluginB] })).toThrow('circular dependency')
   })
 
   it('warns on unsatisfiable before constraints', () => {
