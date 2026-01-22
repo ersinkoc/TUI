@@ -463,6 +463,22 @@ describe('Buffer', () => {
       expect(buffer.get(1, 0)?.char).toBe('好')
     })
 
+    it('should clear wide character at row end correctly', () => {
+      const buffer = createBuffer(6, 2)
+      // Write a wide character at position 4-5 (end of first row)
+      buffer.write(4, 0, '中', { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      expect(buffer.get(4, 0)?.char).toBe('中')
+      expect(buffer.get(5, 0)?.char).toBe('') // continuation
+
+      // Overwrite position 4 with narrow char - should clear wide char at row end
+      buffer.write(4, 0, 'A', { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      expect(buffer.get(4, 0)?.char).toBe('A')
+      // Position 5 should be cleared
+      expect(buffer.get(5, 0)?.char).toBe(' ')
+    })
+
     it('should clear existing wide character when overwriting', () => {
       const buffer = createBuffer(10, 1)
       // Write a wide character first
@@ -645,6 +661,45 @@ describe('Buffer', () => {
       expect(buffer.get(4, 0)?.char).toBe('o')
       // New cells should be empty
       expect(buffer.get(9, 9)?.char).toBe(' ')
+    })
+
+    it('should preserve wide characters with continuation cells during resize', () => {
+      const buffer = createBuffer(10, 2)
+      // Write CJK characters that each take 2 cells
+      buffer.write(0, 0, '你好', { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      // Resize to larger
+      buffer.resize(15, 3)
+
+      // Wide chars should be preserved with continuations
+      expect(buffer.get(0, 0)?.char).toBe('你')
+      expect(buffer.get(1, 0)?.char).toBe('') // continuation
+      expect(buffer.get(2, 0)?.char).toBe('好')
+      expect(buffer.get(3, 0)?.char).toBe('') // continuation
+    })
+
+    it('should handle wide character at edge during resize', () => {
+      const buffer = createBuffer(5, 1)
+      // Write CJK at position 3-4 (last two cells)
+      buffer.write(3, 0, '中', { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      // Resize to smaller - wide char at edge
+      buffer.resize(4, 1)
+
+      // Position 3 should still have the char if it fits
+      expect(buffer.get(3, 0)?.char).toBe('中')
+    })
+
+    it('should handle resize when wide character continuation would overflow', () => {
+      const buffer = createBuffer(5, 1)
+      // Write CJK at position 3-4
+      buffer.write(3, 0, '中', { fg: DEFAULT_FG, bg: DEFAULT_BG, attrs: 0 })
+
+      // Resize to smaller where continuation would not fit
+      buffer.resize(4, 1)
+
+      // Should preserve content up to new width
+      expect(buffer.width).toBe(4)
     })
   })
 

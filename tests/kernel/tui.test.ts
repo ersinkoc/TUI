@@ -707,6 +707,331 @@ describe('tui', () => {
   })
 })
 
+describe('error handling', () => {
+  it('getError returns null when no error', () => {
+    const app = tui()
+    expect(app.getError()).toBeNull()
+  })
+
+  it('clearError returns app for chaining', () => {
+    const app = tui()
+    const result = app.clearError()
+    expect(result).toBe(app)
+  })
+
+  it('clearError schedules render', () => {
+    const plugin = createMockPlugin()
+    const app = tui({ plugins: [plugin] })
+
+    app.mount(createMockNode())
+    app.start()
+    vi.advanceTimersByTime(20)
+
+    // Clear render call count
+    vi.mocked(plugin.render).mockClear()
+
+    app.clearError()
+    vi.advanceTimersByTime(20)
+
+    expect(plugin.render).toHaveBeenCalled()
+    app.quit()
+  })
+
+  it('handles beforeRender errors gracefully', () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const errorPlugin = {
+      name: 'error-plugin',
+      install: vi.fn(),
+      beforeRender: vi.fn(() => {
+        throw new Error('beforeRender failed')
+      }),
+      render: vi.fn()
+    }
+    const app = tui({ plugins: [errorPlugin] })
+
+    app.mount(createMockNode())
+    app.start()
+    vi.advanceTimersByTime(20)
+
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Error in error-plugin beforeRender'),
+      expect.any(Error)
+    )
+    expect(app.getError()).not.toBeNull()
+    consoleSpy.mockRestore()
+    app.quit()
+  })
+
+  it('handles render errors gracefully', () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const errorPlugin = {
+      name: 'render-error-plugin',
+      install: vi.fn(),
+      render: vi.fn(() => {
+        throw new Error('render failed')
+      })
+    }
+    const app = tui({ plugins: [errorPlugin] })
+
+    app.mount(createMockNode())
+    app.start()
+    vi.advanceTimersByTime(20)
+
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Error in render-error-plugin render'),
+      expect.any(Error)
+    )
+    expect(app.getError()).not.toBeNull()
+    consoleSpy.mockRestore()
+    app.quit()
+  })
+
+  it('handles afterRender errors gracefully', () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const errorPlugin = {
+      name: 'after-error-plugin',
+      install: vi.fn(),
+      afterRender: vi.fn(() => {
+        throw new Error('afterRender failed')
+      })
+    }
+    const app = tui({ plugins: [errorPlugin] })
+
+    app.mount(createMockNode())
+    app.start()
+    vi.advanceTimersByTime(20)
+
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Error in after-error-plugin afterRender'),
+      expect.any(Error)
+    )
+    expect(app.getError()).not.toBeNull()
+    consoleSpy.mockRestore()
+    app.quit()
+  })
+
+  it('handles non-Error objects in render hooks', () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const errorPlugin = {
+      name: 'string-error-plugin',
+      install: vi.fn(),
+      render: vi.fn(() => {
+        throw 'string error' // eslint-disable-line no-throw-literal
+      })
+    }
+    const app = tui({ plugins: [errorPlugin] })
+
+    app.mount(createMockNode())
+    app.start()
+    vi.advanceTimersByTime(20)
+
+    expect(app.getError()).not.toBeNull()
+    expect(app.getError()?.message).toBe('string error')
+    consoleSpy.mockRestore()
+    app.quit()
+  })
+})
+
+describe('disposeRoot', () => {
+  it('disposes the root node', async () => {
+    const { BaseNode } = await import('../../src/widgets/node')
+
+    class TestNode extends BaseNode {
+      readonly type = 'test' as const
+      render(): void {}
+    }
+
+    const app = tui()
+    const node = new TestNode()
+
+    app.mount(node)
+    app.disposeRoot()
+
+    expect(app.root).toBeNull()
+  })
+
+  it('returns app for chaining', () => {
+    const app = tui()
+    app.mount(createMockNode())
+
+    const result = app.disposeRoot()
+
+    expect(result).toBe(app)
+  })
+
+  it('handles dispose errors gracefully', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const { BaseNode } = await import('../../src/widgets/node')
+
+    class ErrorNode extends BaseNode {
+      readonly type = 'error' as const
+      render(): void {}
+      dispose(): void {
+        throw new Error('Dispose failed')
+      }
+    }
+
+    const app = tui()
+    const node = new ErrorNode()
+
+    app.mount(node)
+    app.disposeRoot()
+
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Error disposing root node'),
+      expect.any(Error)
+    )
+    expect(app.getError()).not.toBeNull()
+    consoleSpy.mockRestore()
+  })
+
+  it('handles non-BaseNode root gracefully', () => {
+    const app = tui()
+    const mockNode = createMockNode()
+
+    app.mount(mockNode)
+    app.disposeRoot()
+
+    // Should not throw, just no-op for non-BaseNode
+    expect(app.root).toBe(mockNode) // Still mounted because it's not BaseNode
+  })
+
+  it('clears focused node on dispose', async () => {
+    const { BaseNode } = await import('../../src/widgets/node')
+
+    class TestNode extends BaseNode {
+      readonly type = 'test' as const
+      render(): void {}
+    }
+
+    const app = tui()
+    const node = new TestNode()
+
+    app.mount(node)
+    app.disposeRoot()
+
+    expect(app.focused).toBeNull()
+  })
+})
+
+describe('plugin dependency resolution', () => {
+  it('resolves plugins with dependencies', () => {
+    const order: string[] = []
+    const pluginA = {
+      name: 'plugin-a',
+      install: vi.fn(() => order.push('a'))
+    }
+    const pluginB = {
+      name: 'plugin-b',
+      dependencies: ['plugin-a'],
+      install: vi.fn(() => order.push('b'))
+    }
+
+    const app = tui({ plugins: [pluginB, pluginA] })
+    app.start()
+
+    expect(order).toEqual(['a', 'b'])
+    app.quit()
+  })
+
+  it('resolves plugins with after constraints', () => {
+    const order: string[] = []
+    const pluginA = {
+      name: 'plugin-a',
+      install: vi.fn(() => order.push('a'))
+    }
+    const pluginB = {
+      name: 'plugin-b',
+      after: ['plugin-a'],
+      install: vi.fn(() => order.push('b'))
+    }
+
+    const app = tui({ plugins: [pluginB, pluginA] })
+    app.start()
+
+    expect(order).toEqual(['a', 'b'])
+    app.quit()
+  })
+
+  it('resolves plugins with before constraints when target not yet loaded', () => {
+    const order: string[] = []
+    // pluginA wants to load before pluginB
+    // pluginB has a dependency that pluginA doesn't have, so it loads later naturally
+    const pluginA = {
+      name: 'plugin-a',
+      before: ['plugin-b'],
+      install: vi.fn(() => order.push('a'))
+    }
+    const pluginB = {
+      name: 'plugin-b',
+      after: ['plugin-a'], // This ensures B loads after A
+      install: vi.fn(() => order.push('b'))
+    }
+
+    const app = tui({ plugins: [pluginA, pluginB] })
+    app.start()
+
+    expect(order).toEqual(['a', 'b'])
+    app.quit()
+  })
+
+  it('throws on missing dependency', () => {
+    const plugin = {
+      name: 'dependent',
+      dependencies: ['missing-plugin'],
+      install: vi.fn()
+    }
+
+    const app = tui({ plugins: [plugin] })
+
+    expect(() => app.start()).toThrow('depends on "missing-plugin" which is not available')
+  })
+
+  it('throws on circular dependency', () => {
+    const pluginA = {
+      name: 'plugin-a',
+      dependencies: ['plugin-b'],
+      install: vi.fn()
+    }
+    const pluginB = {
+      name: 'plugin-b',
+      dependencies: ['plugin-a'],
+      install: vi.fn()
+    }
+
+    const app = tui({ plugins: [pluginA, pluginB] })
+
+    expect(() => app.start()).toThrow('circular dependency')
+  })
+
+  it('warns on unsatisfiable before constraints', () => {
+    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const order: string[] = []
+
+    // pluginA has no constraints, will load first
+    // pluginB wants to load before pluginA, but pluginA has no dependency on B
+    const pluginA = {
+      name: 'plugin-a',
+      install: vi.fn(() => order.push('a'))
+    }
+    const pluginB = {
+      name: 'plugin-b',
+      before: ['plugin-a'],
+      after: ['plugin-a'], // This creates unsatisfiable constraint
+      install: vi.fn(() => order.push('b'))
+    }
+
+    const app = tui({ plugins: [pluginA, pluginB] })
+    app.start()
+
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining('unsatisfiable "before" constraint')
+    )
+    consoleSpy.mockRestore()
+    app.quit()
+  })
+})
+
 describe('createApp', () => {
   it('creates an app with standard plugins', () => {
     const app = createApp()

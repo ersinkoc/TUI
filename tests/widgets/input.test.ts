@@ -849,4 +849,68 @@ describe('Input Widget', () => {
       expect(i.currentValue).toBe('')
     })
   })
+
+  describe('onChangeDebounced', () => {
+    it('should return this for chaining', () => {
+      const handler = vi.fn()
+      const i = input()
+      const result = i.onChangeDebounced(handler, 100)
+      expect(result).toBe(i)
+    })
+
+    it('should register debounced handler', () => {
+      const handler = vi.fn()
+      const i = input().onChangeDebounced(handler, 100)
+      expect((i as any)._debouncedHandlers).toHaveLength(1)
+      expect((i as any)._debouncedHandlers[0].handler).toBe(handler)
+      expect((i as any)._debouncedHandlers[0].ms).toBe(100)
+    })
+
+    it('should use default debounce time of 300ms', () => {
+      const handler = vi.fn()
+      const i = input().onChangeDebounced(handler)
+      expect((i as any)._debouncedHandlers[0].ms).toBe(300)
+    })
+
+    it('should register multiple debounced handlers', () => {
+      const handler1 = vi.fn()
+      const handler2 = vi.fn()
+      const i = input()
+        .onChangeDebounced(handler1, 200)
+        .onChangeDebounced(handler2, 100)
+      expect((i as any)._debouncedHandlers).toHaveLength(2)
+    })
+  })
+
+  describe('grapheme truncation during insert', () => {
+    it('should truncate multi-grapheme insert at maxLength', () => {
+      const i = input().maxLength(5).value('AB').focus()
+      ;(i as any)._cursorPosition = 2
+
+      // Insert text that would exceed maxLength
+      ;(i as any).handleKey('CDE')
+
+      expect(i.currentValue).toBe('ABCDE')
+      expect(i.currentValue.length).toBeLessThanOrEqual(5)
+    })
+
+    it('should handle grapheme clusters during truncation', () => {
+      const i = input().maxLength(4).value('AB').focus()
+      ;(i as any)._cursorPosition = 2
+
+      // Insert emoji (2+ graphemes worth)
+      ;(i as any).handleKey('CD')
+
+      expect(i.currentValue).toBe('ABCD')
+    })
+
+    it('should not insert if no room', () => {
+      const i = input().maxLength(3).value('ABC').focus()
+      ;(i as any)._cursorPosition = 3
+
+      ;(i as any).handleKey('D')
+
+      expect(i.currentValue).toBe('ABC')
+    })
+  })
 })

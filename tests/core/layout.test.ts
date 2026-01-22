@@ -2,7 +2,7 @@
  * @oxog/tui - Layout Engine Tests
  */
 
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import {
   createLayoutEngine,
   resolveDimension,
@@ -272,6 +272,20 @@ describe('measureContent', () => {
     const parent = createMockNode({ flexDirection: 'column' }, [child1, child2])
 
     expect(measureContent(parent)).toEqual({ width: 20, height: 10 })
+  })
+
+  it('returns zero dimensions when depth limit exceeded', () => {
+    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const node = createMockNode({ width: 100, height: 100 })
+
+    // Call with depth already at/above LAYOUT_MAX_DEPTH (200)
+    const result = measureContent(node, 200)
+
+    expect(result).toEqual({ width: 0, height: 0 })
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining('measureContent exceeded maximum depth')
+    )
+    consoleSpy.mockRestore()
   })
 })
 

@@ -749,6 +749,52 @@ describe('focusPlugin', () => {
         expect(nodes).not.toContain(box)
       })
     })
+
+    describe('registerFocusable with disposed node', () => {
+      it('warns and rejects disposed nodes', () => {
+        const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+        const plugin = focusPlugin()
+        const app = createMockApp()
+        const root = createMockContainer()
+        const box = new TestNode('box')
+        box._visible = true
+        ;(box as any).focusable = true
+        // Simulate disposed node
+        ;(box as any)._disposed = true
+        app.root = root
+
+        plugin.install(app)
+
+        const focusApp = app as TUIApp & { focus: any }
+        focusApp.focus.registerFocusable(box)
+
+        expect(consoleSpy).toHaveBeenCalledWith(
+          expect.stringContaining('Cannot register disposed node')
+        )
+        consoleSpy.mockRestore()
+      })
+    })
+
+    describe('setEnabled', () => {
+      it('enables and disables focus functionality', () => {
+        const plugin = focusPlugin()
+        const app = createMockApp()
+        const root = createMockContainer()
+        app.root = root
+
+        plugin.install(app)
+
+        const focusApp = app as TUIApp & { focus: any }
+
+        expect(focusApp.focus.isEnabled()).toBe(true)
+
+        focusApp.focus.setEnabled(false)
+        expect(focusApp.focus.isEnabled()).toBe(false)
+
+        focusApp.focus.setEnabled(true)
+        expect(focusApp.focus.isEnabled()).toBe(true)
+      })
+    })
   })
 
   describe('destroy', () => {

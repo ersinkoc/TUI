@@ -10,6 +10,9 @@ import {
   RenderError,
   ValidationError,
   StreamError,
+  BufferSizeError,
+  DisposedNodeError,
+  NodeMaxChildrenError,
   isTUIError,
   isPluginError,
   createError
@@ -164,6 +167,99 @@ describe('StreamError', () => {
   })
 })
 
+describe('BufferSizeError', () => {
+  it('creates error with width and height', () => {
+    const error = new BufferSizeError(-1, 100)
+    expect(error.width).toBe(-1)
+    expect(error.height).toBe(100)
+    expect(error.code).toBe('BUFFER_INVALID_SIZE')
+    expect(error.name).toBe('BufferSizeError')
+    expect(error.message).toContain('-1x100')
+    expect(error.message).toContain('Invalid buffer size')
+  })
+
+  it('is an instance of TUIError', () => {
+    const error = new BufferSizeError(0, 0)
+    expect(error).toBeInstanceOf(Error)
+    expect(error).toBeInstanceOf(TUIError)
+    expect(error).toBeInstanceOf(BufferSizeError)
+  })
+
+  it('has stack trace', () => {
+    const error = new BufferSizeError(10, 10)
+    expect(error.stack).toBeDefined()
+  })
+
+  it('handles large invalid dimensions', () => {
+    const error = new BufferSizeError(100000, 100000)
+    expect(error.width).toBe(100000)
+    expect(error.height).toBe(100000)
+    expect(error.message).toContain('100000x100000')
+  })
+})
+
+describe('DisposedNodeError', () => {
+  it('creates error with node ID and operation', () => {
+    const error = new DisposedNodeError('node_123', 'addChild')
+    expect(error.nodeId).toBe('node_123')
+    expect(error.operation).toBe('addChild')
+    expect(error.code).toBe('NODE_DISPOSED')
+    expect(error.name).toBe('DisposedNodeError')
+    expect(error.message).toContain('node_123')
+    expect(error.message).toContain('addChild')
+    expect(error.message).toContain('disposed')
+  })
+
+  it('is an instance of TUIError', () => {
+    const error = new DisposedNodeError('id', 'op')
+    expect(error).toBeInstanceOf(Error)
+    expect(error).toBeInstanceOf(TUIError)
+    expect(error).toBeInstanceOf(DisposedNodeError)
+  })
+
+  it('has stack trace', () => {
+    const error = new DisposedNodeError('id', 'op')
+    expect(error.stack).toBeDefined()
+  })
+
+  it('handles different operations', () => {
+    const ops = ['add', 'remove', 'render', 'focus', 'update']
+    for (const op of ops) {
+      const error = new DisposedNodeError('node_x', op)
+      expect(error.operation).toBe(op)
+      expect(error.message).toContain(op)
+    }
+  })
+})
+
+describe('NodeMaxChildrenError', () => {
+  it('creates error with parent ID', () => {
+    const error = new NodeMaxChildrenError('parent_456')
+    expect(error.parentId).toBe('parent_456')
+    expect(error.code).toBe('NODE_MAX_CHILDREN')
+    expect(error.name).toBe('NodeMaxChildrenError')
+    expect(error.message).toContain('parent_456')
+    expect(error.message).toContain('Maximum children limit')
+  })
+
+  it('is an instance of TUIError', () => {
+    const error = new NodeMaxChildrenError('parent')
+    expect(error).toBeInstanceOf(Error)
+    expect(error).toBeInstanceOf(TUIError)
+    expect(error).toBeInstanceOf(NodeMaxChildrenError)
+  })
+
+  it('has stack trace', () => {
+    const error = new NodeMaxChildrenError('parent')
+    expect(error.stack).toBeDefined()
+  })
+
+  it('mentions virtual scrolling suggestion', () => {
+    const error = new NodeMaxChildrenError('container')
+    expect(error.message).toContain('virtual scrolling')
+  })
+})
+
 describe('isTUIError', () => {
   it('returns true for TUIError', () => {
     expect(isTUIError(new TUIError('Test', 'RENDER_ERROR'))).toBe(true)
@@ -175,6 +271,9 @@ describe('isTUIError', () => {
     expect(isTUIError(new RenderError('Test'))).toBe(true)
     expect(isTUIError(new ValidationError('Test'))).toBe(true)
     expect(isTUIError(new StreamError('Test'))).toBe(true)
+    expect(isTUIError(new BufferSizeError(0, 0))).toBe(true)
+    expect(isTUIError(new DisposedNodeError('id', 'op'))).toBe(true)
+    expect(isTUIError(new NodeMaxChildrenError('parent'))).toBe(true)
   })
 
   it('returns false for regular Error', () => {
@@ -286,5 +385,23 @@ describe('createError', () => {
     const error = createError('ALREADY_RUNNING', 'Test')
     expect(error).toBeInstanceOf(TUIError)
     expect(error.code).toBe('ALREADY_RUNNING')
+  })
+
+  it('creates BufferSizeError for BUFFER_INVALID_SIZE', () => {
+    const error = createError('BUFFER_INVALID_SIZE', 'Test')
+    expect(error).toBeInstanceOf(BufferSizeError)
+    expect(error.code).toBe('BUFFER_INVALID_SIZE')
+  })
+
+  it('creates DisposedNodeError for NODE_DISPOSED', () => {
+    const error = createError('NODE_DISPOSED', 'Test')
+    expect(error).toBeInstanceOf(DisposedNodeError)
+    expect(error.code).toBe('NODE_DISPOSED')
+  })
+
+  it('creates NodeMaxChildrenError for NODE_MAX_CHILDREN', () => {
+    const error = createError('NODE_MAX_CHILDREN', 'Test')
+    expect(error).toBeInstanceOf(NodeMaxChildrenError)
+    expect(error.code).toBe('NODE_MAX_CHILDREN')
   })
 })

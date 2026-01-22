@@ -653,6 +653,33 @@ describe('Node System', () => {
 
       expect(getCommonAncestor(node1, node2)).toBeUndefined()
     })
+
+    it('should warn and return undefined when depth limit exceeded (circular reference)', () => {
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      // Create nodes with fake circular reference via prototype manipulation
+      const nodeA = new MockContainerNode()
+      const nodeB = new MockContainerNode()
+
+      // Create a mock that returns itself as parent (simulating circular reference)
+      // This requires manipulating the parent getter
+      let callCount = 0
+      Object.defineProperty(nodeB, 'parent', {
+        get() {
+          callCount++
+          // Return self as parent to create infinite loop (will hit depth limit)
+          return callCount > 1000 ? null : nodeB
+        }
+      })
+
+      const result = getCommonAncestor(nodeA, nodeB)
+
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('getCommonAncestor exceeded maximum depth')
+      )
+      expect(result).toBeUndefined()
+      consoleSpy.mockRestore()
+    })
   })
 
   describe('findNodeAtPosition()', () => {
@@ -710,6 +737,15 @@ describe('Node System', () => {
 
       // child2 was added last, should be on top
       expect(findNodeAtPosition(root, 20, 20)).toBe(child2)
+    })
+
+    it('should return undefined when depth limit is exceeded', () => {
+      const root = new MockContainerNode()
+      root._bounds = { x: 0, y: 0, width: 100, height: 100 }
+
+      // Call with depth already at/above TREE_MAX_DEPTH (1000)
+      expect(findNodeAtPosition(root, 50, 50, 1000)).toBeUndefined()
+      expect(findNodeAtPosition(root, 50, 50, 1001)).toBeUndefined()
     })
   })
 
