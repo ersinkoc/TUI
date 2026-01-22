@@ -415,13 +415,13 @@ class TerminalNodeImpl extends LeafNode implements TerminalNode {
   }
 
   // Focus
-  focus(): this {
+  override focus(): this {
     this._isFocused = true
     this.markDirty()
     return this
   }
 
-  blur(): this {
+  override blur(): this {
     this._isFocused = false
     this.markDirty()
     return this

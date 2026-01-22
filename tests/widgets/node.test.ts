@@ -50,14 +50,24 @@ describe('Node System', () => {
       const id2 = generateId()
       const id3 = generateId()
 
-      expect(id1).toBe('node_1')
-      expect(id2).toBe('node_2')
-      expect(id3).toBe('node_3')
+      // New format: node_${time}_${id_base36}
+      expect(id1).toMatch(/^node_\d+_[a-z0-9]+$/)
+      expect(id2).toMatch(/^node_\d+_[a-z0-9]+$/)
+      expect(id3).toMatch(/^node_\d+_[a-z0-9]+$/)
+
+      // IDs should be unique
+      expect(id1).not.toBe(id2)
+      expect(id2).not.toBe(id3)
     })
 
     it('should increment counter', () => {
-      expect(generateId()).toBe('node_1')
-      expect(generateId()).toBe('node_2')
+      const id1 = generateId()
+      const id2 = generateId()
+
+      // Extract counter parts and verify they're different
+      const counter1 = id1.split('_')[2]
+      const counter2 = id2.split('_')[2]
+      expect(counter1).not.toBe(counter2)
     })
   })
 
@@ -66,7 +76,10 @@ describe('Node System', () => {
       generateId()
       generateId()
       resetIdCounter()
-      expect(generateId()).toBe('node_1')
+      const id = generateId()
+
+      // After reset, should generate valid ID
+      expect(id).toMatch(/^node_\d+_[a-z0-9]+$/)
     })
   })
 
@@ -76,8 +89,10 @@ describe('Node System', () => {
         const node1 = new MockContainerNode()
         const node2 = new MockContainerNode()
 
-        expect(node1.id).toBe('node_1')
-        expect(node2.id).toBe('node_2')
+        // New format: node_${time}_${id_base36}
+        expect(node1.id).toMatch(/^node_\d+_[a-z0-9]+$/)
+        expect(node2.id).toMatch(/^node_\d+_[a-z0-9]+$/)
+        expect(node1.id).not.toBe(node2.id)
       })
 
       it('should initialize with default values', () => {
@@ -816,25 +831,23 @@ describe('Node System', () => {
   })
 
   describe('onFocus() and onBlur()', () => {
-    it('should return unsubscribe function', () => {
+    it('should return this for method chaining', () => {
       const node = new MockContainerNode()
       const handler = vi.fn()
 
-      const unsubscribe = node.onFocus(handler)
+      const result = node.onFocus(handler)
 
-      expect(typeof unsubscribe).toBe('function')
+      expect(result).toBe(node)
     })
 
-    it('should unsubscribe handler', () => {
+    it('should call focus handler when focus() is called', () => {
       const node = new MockContainerNode()
       const handler = vi.fn()
 
-      const unsubscribe = node.onFocus(handler)
-      unsubscribe()
-
+      node.onFocus(handler)
       node.focus()
 
-      expect(handler).not.toHaveBeenCalled()
+      expect(handler).toHaveBeenCalled()
     })
 
     it('should handle multiple handlers', () => {
@@ -851,19 +864,17 @@ describe('Node System', () => {
       expect(handler2).toHaveBeenCalled()
     })
 
-    it('should only remove specific handler', () => {
+    it('should support method chaining', () => {
       const node = new MockContainerNode()
       const handler1 = vi.fn()
       const handler2 = vi.fn()
 
-      const unsubscribe1 = node.onFocus(handler1)
-      node.onFocus(handler2)
-
-      unsubscribe1()
+      // Method chaining should work
+      node.onFocus(handler1).onFocus(handler2)
 
       node.focus()
 
-      expect(handler1).not.toHaveBeenCalled()
+      expect(handler1).toHaveBeenCalled()
       expect(handler2).toHaveBeenCalled()
     })
 
@@ -871,12 +882,12 @@ describe('Node System', () => {
       const node = new MockContainerNode()
       const handler = vi.fn()
 
-      const unsubscribe = node.onBlur(handler)
-      unsubscribe()
+      const result = node.onBlur(handler)
+      expect(result).toBe(node)
 
       node.blur()
 
-      expect(handler).not.toHaveBeenCalled()
+      expect(handler).toHaveBeenCalled()
     })
   })
 

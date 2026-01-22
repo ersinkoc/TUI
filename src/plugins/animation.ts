@@ -169,11 +169,13 @@ export function animationPlugin(options: AnimationPluginOptions = {}): Plugin {
 
   let app: TUIApp | null = null
   let running = false
-  let animationTimer: ReturnType<typeof setInterval> | null = null
+  let animationTimer: ReturnType<typeof setTimeout> | null = null
   let startTime = 0
   let lastFrameTime = 0
   let frameCount = 0
   let currentFPS = 0
+  let fpsUpdateTime = 0
+  let fpsFrameCount = 0
 
   const frameCallbacks: Set<AnimationCallback> = new Set()
   const activeAnimations: Set<{ cancel: () => void }> = new Set()
@@ -181,25 +183,53 @@ export function animationPlugin(options: AnimationPluginOptions = {}): Plugin {
   const frameInterval = Math.floor(1000 / targetFPS)
 
   /**
-   * Main animation loop.
+   * Main animation loop using setTimeout chain to prevent drift.
+   * setInterval can drift over time; setTimeout chain recalculates timing each frame.
    */
   function tick(): void {
     /* c8 ignore next */
     if (!running) return
 
     const now = performance.now()
-    const deltaTime = now - lastFrameTime
+
+    // Guard against timing anomalies (negative delta from clock adjustment)
+    // or first frame where lastFrameTime may not be initialized
+    let deltaTime = now - lastFrameTime
+    if (deltaTime < 0 || !Number.isFinite(deltaTime)) {
+      // Negative or invalid delta - skip this frame's timing update
+      // but still process callbacks with zero delta to maintain state
+      deltaTime = 0
+    }
+    // Clamp deltaTime to reasonable maximum (e.g., 1 second)
+    // to prevent huge jumps from long pauses
+    if (deltaTime > 1000) {
+      deltaTime = 1000
+    }
+
     const totalTime = now - startTime
     lastFrameTime = now
     frameCount++
+    fpsFrameCount++
 
-    // Update FPS every second - guard against division by zero and Infinity
-    if (frameCount % targetFPS === 0 && deltaTime > 0) {
-      currentFPS = Math.round(1000 / deltaTime)
+    // Update FPS every second using accumulated time (more accurate than frame count)
+    const fpsDelta = now - fpsUpdateTime
+    // Handle negative deltas (clock went backwards due to manual adjustment or NTP sync)
+    // Treat negative delta the same as >= 1000ms - reset FPS calculation
+    if (fpsDelta >= 1000 || fpsDelta < 0) {
+      // Guard against division by zero or invalid FPS values
+      const safeDelta = Math.abs(fpsDelta)
+      if (safeDelta > 0 && Number.isFinite(safeDelta)) {
+        currentFPS = Math.round((fpsFrameCount * 1000) / safeDelta)
+      } else {
+        currentFPS = 0
+      }
+      fpsUpdateTime = now
+      fpsFrameCount = 0
     }
 
-    // Call frame callbacks
-    for (const callback of frameCallbacks) {
+    // Call frame callbacks (snapshot to safely handle modification during iteration)
+    const callbackSnapshot = [...frameCallbacks]
+    for (const callback of callbackSnapshot) {
       try {
         callback(deltaTime, totalTime)
       } catch (error) {
@@ -212,6 +242,15 @@ export function animationPlugin(options: AnimationPluginOptions = {}): Plugin {
     // Trigger render if app has markDirty
     if (app && typeof (app as unknown as { markDirty?: () => void }).markDirty === 'function') {
       ;(app as unknown as { markDirty: () => void }).markDirty()
+    }
+
+    // Schedule next frame with drift compensation
+    if (running) {
+      const elapsed = performance.now() - now
+      // Guard against negative elapsed time
+      const safeElapsed = Math.max(0, Math.min(elapsed, frameInterval))
+      const nextDelay = Math.max(0, frameInterval - safeElapsed)
+      animationTimer = setTimeout(tick, nextDelay)
     }
   }
 
@@ -226,8 +265,11 @@ export function animationPlugin(options: AnimationPluginOptions = {}): Plugin {
     startTime = performance.now()
     lastFrameTime = startTime
     frameCount = 0
+    fpsUpdateTime = startTime
+    fpsFrameCount = 0
 
-    animationTimer = setInterval(tick, frameInterval)
+    // Use setTimeout chain instead of setInterval to prevent drift
+    animationTimer = setTimeout(tick, frameInterval)
 
     if (debug) {
       console.error(`[animation] loop started at ${targetFPS}fps`)
@@ -243,7 +285,7 @@ export function animationPlugin(options: AnimationPluginOptions = {}): Plugin {
     running = false
     currentFPS = 0
     if (animationTimer) {
-      clearInterval(animationTimer)
+      clearTimeout(animationTimer)
       animationTimer = null
     }
 
@@ -362,9 +404,16 @@ export function animationPlugin(options: AnimationPluginOptions = {}): Plugin {
     destroy(): void {
       stop()
 
-      // Cancel all active animations
-      for (const animation of activeAnimations) {
-        animation.cancel()
+      // Cancel all active animations (snapshot to safely handle modification during iteration)
+      const animationsSnapshot = [...activeAnimations]
+      for (const animation of animationsSnapshot) {
+        try {
+          animation.cancel()
+        } catch (error) {
+          if (debug) {
+            console.error('[animation] error canceling animation:', error)
+          }
+        }
       }
 
       frameCallbacks.clear()

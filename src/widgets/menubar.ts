@@ -407,7 +407,7 @@ class MenubarNodeImpl extends LeafNode implements MenubarNode {
   }
 
   // Focus
-  focus(): this {
+  override focus(): this {
     this._isFocused = true
     if (this._activeMenuIndex < 0 && this._menus.length > 0) {
       // Highlight first menu but don't open it
@@ -417,7 +417,7 @@ class MenubarNodeImpl extends LeafNode implements MenubarNode {
     return this
   }
 
-  blur(): this {
+  override blur(): this {
     this._isFocused = false
     this.closeMenu()
     this._activeMenuIndex = -1

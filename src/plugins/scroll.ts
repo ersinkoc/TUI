@@ -63,6 +63,8 @@ export interface ScrollPluginAPI {
   unregisterScrollable(node: Node): void
   /** Get all scrollable nodes */
   getScrollableNodes(): string[]
+  /** Clean up disposed nodes from tracking */
+  cleanup(): void
 }
 
 // ============================================================
@@ -240,7 +242,20 @@ export function scrollPlugin(options: ScrollPluginOptions = {}): Plugin {
           scrollableNodes.delete(node.id)
         },
 
-        getScrollableNodes: () => Array.from(scrollableNodes.keys())
+        getScrollableNodes: () => Array.from(scrollableNodes.keys()),
+
+        /**
+         * Clean up disposed nodes from tracking maps.
+         * Call this periodically or after node disposal.
+         */
+        cleanup: () => {
+          for (const [nodeId, node] of scrollableNodes) {
+            if ((node as BaseNode)._disposed) {
+              scrollStates.delete(nodeId)
+              scrollableNodes.delete(nodeId)
+            }
+          }
+        }
       }
 
       // Hook into mouse plugin for scroll wheel events
@@ -284,6 +299,14 @@ export function scrollPlugin(options: ScrollPluginOptions = {}): Plugin {
     },
 
     onResize(_width: number, _height: number): void {
+      // Clean up disposed nodes first
+      for (const [nodeId, node] of scrollableNodes) {
+        if ((node as BaseNode)._disposed) {
+          scrollStates.delete(nodeId)
+          scrollableNodes.delete(nodeId)
+        }
+      }
+
       // Update view sizes for all scrollable nodes
       for (const [nodeId, node] of scrollableNodes) {
         const state = scrollStates.get(nodeId)

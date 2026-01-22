@@ -23,24 +23,82 @@ const SYNC_START = '\x1b[?2026h'  // Begin synchronized update
 const SYNC_END = '\x1b[?2026l'    // End synchronized update
 
 /**
+ * Terminal capability detection result.
+ */
+interface TerminalCapabilities {
+  /** Supports synchronized output (DECSET 2026) */
+  syncOutput: boolean
+  /** Supports sixel graphics */
+  sixel: boolean
+  /** Supports kitty graphics protocol */
+  kittyGraphics: boolean
+}
+
+/**
  * Check if the terminal likely supports synchronized output.
- * Most modern terminals (kitty, iTerm2, WezTerm, Windows Terminal) support this.
+ *
+ * Uses a more precise detection approach based on known terminal
+ * capabilities rather than broad pattern matching.
+ *
+ * @returns True if terminal likely supports synchronized output
  */
 export function terminalSupportsSyncOutput(): boolean {
   const term = process.env.TERM || ''
   const termProgram = process.env.TERM_PROGRAM || ''
+  const termProgramVersion = process.env.TERM_PROGRAM_VERSION || ''
   const wtSession = process.env.WT_SESSION // Windows Terminal
 
-  // Known supporting terminals
-  const supportingTerms = ['xterm-kitty', 'xterm-256color', 'screen-256color']
-  const supportingPrograms = ['iTerm.app', 'WezTerm', 'vscode', 'Hyper']
+  // Explicit terminal capability mapping based on known support
+  const terminalCapabilities: Record<string, TerminalCapabilities> = {
+    // Kitty terminals (explicit check, not substring)
+    'xterm-kitty': { syncOutput: true, sixel: false, kittyGraphics: true },
+    'kitty': { syncOutput: true, sixel: false, kittyGraphics: true },
 
-  return (
-    supportingTerms.some(t => term.includes(t)) ||
-    supportingPrograms.some(p => termProgram.includes(p)) ||
-    !!wtSession ||
-    term.includes('256color')
-  )
+    // WezTerm (needs exact match or version check)
+    'wezterm': { syncOutput: true, sixel: true, kittyGraphics: false },
+
+    // iTerm2
+    'iTerm.app': { syncOutput: true, sixel: false, kittyGraphics: false },
+
+    // VS Code integrated terminal
+    'vscode': { syncOutput: true, sixel: false, kittyGraphics: false },
+
+    // Windows Terminal
+    'windows-terminal': { syncOutput: true, sixel: false, kittyGraphics: false },
+
+    // Modern xterm variants (explicit versions, not generic 256color)
+    'xterm-256color': { syncOutput: false, sixel: false, kittyGraphics: false },
+    'screen-256color': { syncOutput: false, sixel: false, kittyGraphics: false },
+
+    // tmux (usually doesn't support DECSET 2026 correctly)
+    'tmux': { syncOutput: false, sixel: false, kittyGraphics: false },
+  }
+
+  // Check for exact TERM match first
+  if (terminalCapabilities[term]) {
+    return terminalCapabilities[term].syncOutput
+  }
+
+  // Check for TERM_PROGRAM match (more reliable for some terminals)
+  if (termProgram === 'WezTerm') {
+    // WezTerm supports sync output in recent versions
+    const versionMatch = termProgramVersion.match(/^(\d+)\.(\d+)/)
+    if (versionMatch) {
+      const major = parseInt(versionMatch[1]!, 10)
+      // WezTerm 3.0+ supports sync output
+      return major >= 3
+    }
+    return true // Assume support for recent versions
+  }
+
+  // Windows Terminal detection via WT_SESSION
+  if (wtSession) {
+    return true
+  }
+
+  // Generic fallback - be conservative
+  // Only enable if we have strong evidence of support
+  return false
 }
 
 // ============================================================
@@ -88,13 +146,36 @@ export function createRenderer(stdout: NodeJS.WriteStream, options: RendererOpti
 
     // Validate dimensions to prevent memory issues
     if (w <= 0 || h <= 0 || w > 10000 || h > 10000) {
+      // Invalidate snapshot to prevent using stale data
+      snapshotCells = null
+      snapshotWidth = 0
+      snapshotHeight = 0
       return
     }
 
     const size = w * h
 
-    // Reallocate only if dimensions changed
-    if (snapshotWidth !== w || snapshotHeight !== h || snapshotCells === null) {
+    // Get cells reference immediately after validating dimensions
+    // This minimizes the race condition window
+    const cells = buffer.cells
+
+    // Triple-check: dimensions, cells length, and snapshot consistency
+    // Only invalidate if we had a previous snapshot (snapshotCells !== null) with different dimensions
+    // First render (snapshotCells === null) should always proceed to create the snapshot
+    if (
+      cells.length !== size ||
+      (snapshotCells !== null && (w !== snapshotWidth || h !== snapshotHeight))
+    ) {
+      // Buffer was resized or dimensions changed - invalidate snapshot
+      // This prevents using inconsistent state
+      snapshotCells = null
+      snapshotWidth = 0
+      snapshotHeight = 0
+      return
+    }
+
+    // Reallocate only if dimensions changed or snapshot is null
+    if (snapshotCells === null || snapshotCells.length !== size) {
       snapshotCells = new Array(size)
       for (let i = 0; i < size; i++) {
         snapshotCells[i] = { char: ' ', fg: 0, bg: 0, attrs: 0 }
@@ -104,7 +185,7 @@ export function createRenderer(stdout: NodeJS.WriteStream, options: RendererOpti
     }
 
     // Copy cell data in-place (reuse existing objects)
-    const cells = buffer.cells
+    // Bounds checking already done above
     for (let i = 0; i < size; i++) {
       const src = cells[i]
       const dst = snapshotCells[i]!
@@ -138,9 +219,23 @@ export function createRenderer(stdout: NodeJS.WriteStream, options: RendererOpti
       let cellsUpdated = 0
       const output: string[] = []
 
+      // Batching configuration - write in chunks to avoid huge allocations
+      const WRITE_BATCH_SIZE = 8192  // Write every ~8KB of output
+      let currentBatchSize = 0
+
+      // Helper to flush output if batch size exceeded
+      const flushIfNeeded = () => {
+        if (currentBatchSize >= WRITE_BATCH_SIZE) {
+          stdout.write(output.join(''))
+          output.length = 0
+          currentBatchSize = 0
+        }
+      }
+
       // Start synchronized output
       if (useSyncOutput) {
         output.push(SYNC_START)
+        currentBatchSize += SYNC_START.length
       }
 
       let lastX = -1
@@ -170,17 +265,23 @@ export function createRenderer(stdout: NodeJS.WriteStream, options: RendererOpti
 
           // Move cursor if not sequential
           if (x !== lastX + 1 || y !== lastY) {
-            output.push(cursorTo(x, y))
+            const cursorSeq = cursorTo(x, y)
+            output.push(cursorSeq)
+            currentBatchSize += cursorSeq.length
           }
 
           // Update colors if changed
           if (cell.fg !== lastFg) {
-            output.push(packedToFgAnsi(cell.fg))
+            const fgSeq = packedToFgAnsi(cell.fg)
+            output.push(fgSeq)
+            currentBatchSize += fgSeq.length
             lastFg = cell.fg
           }
 
           if (cell.bg !== lastBg) {
-            output.push(packedToBgAnsi(cell.bg))
+            const bgSeq = packedToBgAnsi(cell.bg)
+            output.push(bgSeq)
+            currentBatchSize += bgSeq.length
             lastBg = cell.bg
           }
 
@@ -188,36 +289,48 @@ export function createRenderer(stdout: NodeJS.WriteStream, options: RendererOpti
           if (cell.attrs !== lastAttrs) {
             // Reset first if going from styled to unstyled
             if (lastAttrs !== 0 && cell.attrs === 0) {
-              output.push(reset())
+              const resetSeq = reset()
+              output.push(resetSeq)
+              currentBatchSize += resetSeq.length
               // Need to re-apply colors after reset
-              output.push(packedToFgAnsi(cell.fg))
-              output.push(packedToBgAnsi(cell.bg))
+              const fgSeq = packedToFgAnsi(cell.fg)
+              const bgSeq = packedToBgAnsi(cell.bg)
+              output.push(fgSeq, bgSeq)
+              currentBatchSize += fgSeq.length + bgSeq.length
             } else {
               const attrSeq = attrsToAnsi(cell.attrs)
               if (attrSeq) {
                 output.push(attrSeq)
+                currentBatchSize += attrSeq.length
               }
             }
             lastAttrs = cell.attrs
           }
 
           output.push(cell.char)
+          currentBatchSize += cell.char.length
           lastX = x
           lastY = y
+
+          // Flush if batch size reached
+          flushIfNeeded()
         }
       }
 
       // Reset attributes at end
       if (output.length > 0 || useSyncOutput) {
-        output.push(reset())
+        const resetSeq = reset()
+        output.push(resetSeq)
+        currentBatchSize += resetSeq.length
       }
 
       // End synchronized output
       if (useSyncOutput) {
         output.push(SYNC_END)
+        currentBatchSize += SYNC_END.length
       }
 
-      // Write to stdout
+      // Write remaining output
       if (output.length > 0) {
         stdout.write(output.join(''))
       }
@@ -263,12 +376,33 @@ export function createBatchedRenderer(stdout: NodeJS.WriteStream, options: Rende
 
     // Validate dimensions to prevent memory issues
     if (w <= 0 || h <= 0 || w > 10000 || h > 10000) {
+      // Invalidate snapshot to prevent using stale data
+      snapshotCells = null
+      snapshotWidth = 0
+      snapshotHeight = 0
       return
     }
 
     const size = w * h
 
-    if (snapshotWidth !== w || snapshotHeight !== h || snapshotCells === null) {
+    // Get cells reference immediately after validating dimensions
+    const cells = buffer.cells
+
+    // Triple-check: dimensions, cells length, and snapshot consistency
+    // Only invalidate if we had a previous snapshot (snapshotCells !== null) with different dimensions
+    // First render (snapshotCells === null) should always proceed to create the snapshot
+    if (
+      cells.length !== size ||
+      (snapshotCells !== null && (w !== snapshotWidth || h !== snapshotHeight))
+    ) {
+      // Buffer was resized or dimensions changed - invalidate snapshot
+      snapshotCells = null
+      snapshotWidth = 0
+      snapshotHeight = 0
+      return
+    }
+
+    if (snapshotCells === null || snapshotCells.length !== size) {
       snapshotCells = new Array(size)
       for (let i = 0; i < size; i++) {
         snapshotCells[i] = { char: ' ', fg: 0, bg: 0, attrs: 0 }
@@ -277,7 +411,7 @@ export function createBatchedRenderer(stdout: NodeJS.WriteStream, options: Rende
       snapshotHeight = h
     }
 
-    const cells = buffer.cells
+    // Copy cell data in-place with bounds checking
     for (let i = 0; i < size; i++) {
       const src = cells[i]
       const dst = snapshotCells[i]!
@@ -326,11 +460,8 @@ export function createBatchedRenderer(stdout: NodeJS.WriteStream, options: Rende
         return 0
       }
 
-      // Sort by position for optimal cursor movement
-      changes.sort((a, b) => {
-        if (a.y !== b.y) return a.y - b.y
-        return a.x - b.x
-      })
+      // No need to sort - changes are already collected in row-major order
+      // (iterating y then x produces sorted output by position)
 
       // Render changes
       const output: string[] = []

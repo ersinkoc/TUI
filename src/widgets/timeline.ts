@@ -376,7 +376,7 @@ class TimelineNodeImpl extends LeafNode implements TimelineNode {
   }
 
   // Focus
-  focus(): this {
+  override focus(): this {
     this._isFocused = true
     if (this._selectable && this._selectedIndex === -1 && this._items.length > 0) {
       this._selectedIndex = 0
@@ -386,7 +386,7 @@ class TimelineNodeImpl extends LeafNode implements TimelineNode {
     return this
   }
 
-  blur(): this {
+  override blur(): this {
     this._isFocused = false
     this.markDirty()
     return this

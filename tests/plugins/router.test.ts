@@ -833,6 +833,8 @@ describe('router edge cases and error handling', () => {
 
   describe('guard that does not call next', () => {
     it('should abort navigation when guard does not call next', async () => {
+      vi.useFakeTimers()
+
       const plugin = routerPlugin({
         routes: [
           { path: '/', component: () => createMockNode() },
@@ -847,13 +849,22 @@ describe('router edge cases and error handling', () => {
         // Intentionally don't call next()
       })
 
-      const result = await app.router!.push('/test')
+      const pushPromise = app.router!.push('/test')
+
+      // Advance time to trigger guard timeout (ROUTER_GUARD_TIMEOUT = 5000ms)
+      await vi.advanceTimersByTimeAsync(5100)
+
+      const result = await pushPromise
 
       expect(result).toBe(false)
       expect(app.router!.current().path).toBe('/')
+
+      vi.useRealTimers()
     })
 
     it('should abort when route guard does not call next', async () => {
+      vi.useFakeTimers()
+
       const plugin = routerPlugin({
         routes: [
           {
@@ -867,9 +878,16 @@ describe('router edge cases and error handling', () => {
       })
       plugin.install(app)
 
-      const result = await app.router!.push('/test')
+      const pushPromise = app.router!.push('/test')
+
+      // Advance time to trigger guard timeout (ROUTER_GUARD_TIMEOUT = 5000ms)
+      await vi.advanceTimersByTimeAsync(5100)
+
+      const result = await pushPromise
 
       expect(result).toBe(false)
+
+      vi.useRealTimers()
     })
   })
 

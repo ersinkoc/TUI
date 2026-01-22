@@ -484,39 +484,30 @@ export function disableBracketedPaste(): string {
 // ============================================================
 
 /**
- * Regex patterns for dangerous ANSI sequences.
- * These can be used for terminal injection attacks.
- * Note: Using non-global regexes to avoid state persistence issues
+ * Combined regex pattern for all dangerous ANSI sequences.
+ * Uses alternation to match any dangerous pattern in a single pass.
+ * This is significantly faster than looping through multiple patterns.
+ *
+ * Patterns matched:
+ * - OSC (Operating System Commands): \x1b]...\x07 or \x1b]...\x1b\\
+ * - DCS (Device Control Strings): \x1bP...\x1b\\
+ * - APC (Application Program Commands): \x1b_...\x1b\\
+ * - SOS (Start of String): \x1bX...\x1b\\
+ * - PM (Privacy Message): \x1b^...\x1b\\
+ * - SCI (Single Character Introducer): \x1bZ
+ * - RIS (Reset to Initial State): \x1bc
+ * - Clear screen home: \x1b[2J\x1b[H
+ * - Window manipulation: \x1b[\d*;\d*;\d*t
  */
-const DANGEROUS_ANSI_PATTERNS = [
-  // Operating System Commands (OSC) - can change terminal title, set clipboard, etc.
-  /\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/,
-  // Device Control Strings (DCS) - can download fonts, send data to devices
-  /\x1bP[^\x1b]*\x1b\\/,
-  // Application Program Commands (APC) - application-specific commands
-  /\x1b_[^\x1b]*\x1b\\/,
-  // Start of String (SOS) - string termination
-  /\x1bX[^\x1b]*\x1b\\/,
-  // Privacy Message (PM) - privacy-related commands
-  /\x1b\^[^\x1b]*\x1b\\/,
-  // Single Character Introducer (SCI) - legacy terminal commands
-  /\x1bZ/,
-  // Reset to Initial State (RIS) - can reset terminal completely
-  /\x1bc/,
-  // Clear screen and move to home (could be used to hide previous output)
-  /\x1b\[2J\x1b\[H/,
-  // Window manipulation sequences
-  /\x1b\[\d*;\d*;\d*t/
-]
-
-/**
- * Safe ANSI patterns that are allowed (colors, cursor movement, attributes).
- */
-export const SAFE_ANSI_PATTERN = /\x1b\[[\d;]*[mABCDHJKsu]/g
+const DANGEROUS_ANSI_COMBINED =
+  /\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1bP[^\x1b]*\x1b\\|\x1b_[^\x1b]*\x1b\\|\x1bX[^\x1b]*\x1b\\|\x1b\^[^\x1b]*\x1b\\|\x1bZ|\x1bc|\x1b\[2J\x1b\[H|\x1b\[\d*;\d*;\d*t/g
 
 /**
  * Sanitize a string by removing dangerous ANSI sequences.
  * Keeps safe sequences like colors and cursor movement.
+ *
+ * This function uses a single combined regex for O(n) performance,
+ * rather than looping through multiple patterns which would be O(n * patterns).
  *
  * @param str - Input string that may contain ANSI sequences
  * @returns Sanitized string with dangerous sequences removed
@@ -531,14 +522,8 @@ export const SAFE_ANSI_PATTERN = /\x1b\[[\d;]*[mABCDHJKsu]/g
  * ```
  */
 export function sanitizeAnsi(str: string): string {
-  let result = str
-
-  // Remove all dangerous patterns
-  for (const pattern of DANGEROUS_ANSI_PATTERNS) {
-    result = result.replace(pattern, '')
-  }
-
-  return result
+  // Single pass with combined pattern - much faster than looping
+  return str.replace(DANGEROUS_ANSI_COMBINED, '')
 }
 
 /**
@@ -565,12 +550,7 @@ export function stripAllAnsi(str: string): string {
  * @returns True if dangerous sequences found
  */
 export function hasDangerousAnsi(str: string): boolean {
-  for (const pattern of DANGEROUS_ANSI_PATTERNS) {
-    // Reset pattern lastIndex since we reuse the regex
-    pattern.lastIndex = 0
-    if (pattern.test(str)) {
-      return true
-    }
-  }
-  return false
+  // Reset lastIndex and test with combined pattern
+  DANGEROUS_ANSI_COMBINED.lastIndex = 0
+  return DANGEROUS_ANSI_COMBINED.test(str)
 }

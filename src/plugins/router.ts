@@ -10,7 +10,8 @@ import type { Plugin, TUIApp, Node } from '../types'
 import {
   ROUTER_MAX_HISTORY_SIZE,
   ROUTER_MAX_REDIRECT_DEPTH,
-  ROUTER_MAX_CACHE_SIZE
+  ROUTER_MAX_CACHE_SIZE,
+  ROUTER_GUARD_TIMEOUT
 } from '../constants'
 
 // ============================================================
@@ -154,8 +155,19 @@ const routePatternCache = new Map<string, { regex: RegExp; paramNames: string[] 
 /**
  * Parse a route path pattern into regex and param names.
  * Results are cached to avoid O(n) regex compilation on every navigation.
+ *
+ * SECURITY: Validates pattern length to prevent DoS via extremely long patterns.
  */
 function parseRoutePath(pattern: string): { regex: RegExp; paramNames: string[] } {
+  // Security check: limit pattern length to prevent DoS
+  const MAX_PATTERN_LENGTH = 1000
+  if (pattern.length > MAX_PATTERN_LENGTH) {
+    throw new Error(
+      `Route pattern too long (${pattern.length} chars). ` +
+      `Maximum is ${MAX_PATTERN_LENGTH} chars to prevent DoS attacks.`
+    )
+  }
+
   // Check cache first
   const cached = routePatternCache.get(pattern)
   if (cached) return cached
@@ -367,65 +379,114 @@ export function routerPlugin(options: RouterPluginOptions = {}): Plugin {
   }
 
   /**
-   * Run navigation guards with error handling.
+   * Run a single guard with timeout protection.
+   */
+  async function runGuardWithTimeout(
+    guard: NavigationGuard,
+    to: Route,
+    from: Route | null,
+    guardName: string
+  ): Promise<{ result: string | false | undefined; resolved: boolean }> {
+    return new Promise((resolve) => {
+      let resolved = false
+      let result: string | false | undefined
+
+      const timeoutId = setTimeout(() => {
+        if (!resolved) {
+          if (debug) {
+            console.error(`[router] Guard timeout (${ROUTER_GUARD_TIMEOUT}ms): ${guardName}`)
+          }
+          resolve({ result: false, resolved: false })
+        }
+      }, ROUTER_GUARD_TIMEOUT)
+
+      const next = (path?: string | false) => {
+        if (resolved) return // Prevent multiple calls
+        resolved = true
+        result = path
+        clearTimeout(timeoutId)
+        resolve({ result, resolved: true })
+      }
+
+      try {
+        const guardResult = guard(to, from, next)
+        // Handle async guards
+        if (guardResult instanceof Promise) {
+          guardResult
+            .then(() => {
+              // Guard completed but may not have called next()
+              if (!resolved) {
+                clearTimeout(timeoutId)
+                resolve({ result, resolved })
+              }
+            })
+            .catch((err) => {
+              if (!resolved) {
+                if (debug) {
+                  console.error('[router] Guard async error:', err)
+                }
+                clearTimeout(timeoutId)
+                resolve({ result: false, resolved: false })
+              }
+            })
+        }
+      } catch (err) {
+        if (!resolved) {
+          if (debug) {
+            console.error('[router] Guard sync error:', err)
+          }
+          clearTimeout(timeoutId)
+          resolve({ result: false, resolved: false })
+        }
+      }
+    })
+  }
+
+  /**
+   * Run navigation guards with error handling and timeout.
    */
   async function runGuards(to: Route, from: Route | null): Promise<string | false | undefined> {
     // Run global guards
+    let guardIndex = 0
     for (const guard of beforeGuards) {
-      try {
-        let result: string | false | undefined
-        let resolved = false
+      const { result, resolved } = await runGuardWithTimeout(
+        guard,
+        to,
+        from,
+        `global guard #${guardIndex++}`
+      )
 
-        await guard(to, from, (path) => {
-          resolved = true
-          result = path
-        })
+      // If guard called next(false), abort
+      if (result === false) {
+        return false
+      }
 
-        // If guard called next(false), abort
-        if (result === false) {
-          return false
-        }
+      // If guard redirected, return new path
+      if (typeof result === 'string') {
+        return result
+      }
 
-        // If guard redirected, return new path
-        if (typeof result === 'string') {
-          return result
-        }
-
-        // If guard didn't resolve, abort
-        if (!resolved) {
-          return false
-        }
-      } catch (err) {
-        if (debug) {
-          console.error('[router] Guard error:', err)
-        }
+      // If guard didn't resolve, abort
+      if (!resolved) {
         return false
       }
     }
 
     // Run route-specific guard
     if (to.matched?.beforeEnter) {
-      try {
-        let result: string | false | undefined
-        let resolved = false
+      const { result, resolved } = await runGuardWithTimeout(
+        to.matched.beforeEnter,
+        to,
+        from,
+        `route guard for ${to.path}`
+      )
 
-        await to.matched.beforeEnter(to, from, (path) => {
-          resolved = true
-          result = path
-        })
-
-        if (result === false || !resolved) {
-          return false
-        }
-
-        if (typeof result === 'string') {
-          return result
-        }
-      } catch (err) {
-        if (debug) {
-          console.error('[router] Route guard error:', err)
-        }
+      if (result === false || !resolved) {
         return false
+      }
+
+      if (typeof result === 'string') {
+        return result
       }
     }
 

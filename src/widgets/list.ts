@@ -356,12 +356,12 @@ class ListNodeImpl<T = unknown> extends LeafNode implements ListNode<T> {
     return this
   }
 
-  onFocus(handler: () => void): this {
+  override onFocus(handler: () => void): this {
     this._focusHandlers.add(handler)
     return this
   }
 
-  onBlur(handler: () => void): this {
+  override onBlur(handler: () => void): this {
     this._blurHandlers.add(handler)
     return this
   }
@@ -403,7 +403,7 @@ class ListNodeImpl<T = unknown> extends LeafNode implements ListNode<T> {
   }
 
   // Focus control
-  focus(): this {
+  override focus(): this {
     if (!this._focused && !this._disposed) {
       this._focused = true
       this.markDirty()
@@ -412,7 +412,7 @@ class ListNodeImpl<T = unknown> extends LeafNode implements ListNode<T> {
     return this
   }
 
-  blur(): this {
+  override blur(): this {
     if (this._focused) {
       this._focused = false
       this.markDirty()

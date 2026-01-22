@@ -286,8 +286,8 @@ class FormNodeImpl extends ContainerNode implements FormNode {
   private _onSubmitHandlers: ((data: Record<string, unknown>) => void | Promise<void>)[] = []
   private _onCancelHandlers: (() => void)[] = []
   private _onValidationErrorHandlers: ((errors: Record<string, string[]>) => void)[] = []
-  private _onFocusHandlers: (() => void)[] = []
-  private _onBlurHandlers: (() => void)[] = []
+  override _onFocusHandlers: (() => void)[] = []
+  override _onBlurHandlers: (() => void)[] = []
 
   constructor(props?: FormProps) {
     super()
@@ -471,7 +471,7 @@ class FormNodeImpl extends ContainerNode implements FormNode {
   }
 
   // Control
-  focus(): this {
+  override focus(): this {
     if (!this._focused) {
       this._focused = true
       this.markDirty()
@@ -482,7 +482,7 @@ class FormNodeImpl extends ContainerNode implements FormNode {
     return this
   }
 
-  blur(): this {
+  override blur(): this {
     if (this._focused) {
       this._focused = false
       this.markDirty()
@@ -724,12 +724,12 @@ class FormNodeImpl extends ContainerNode implements FormNode {
     return this
   }
 
-  onFocus(handler: () => void): this {
+  override onFocus(handler: () => void): this {
     this._onFocusHandlers.push(handler)
     return this
   }
 
-  onBlur(handler: () => void): this {
+  override onBlur(handler: () => void): this {
     this._onBlurHandlers.push(handler)
     return this
   }

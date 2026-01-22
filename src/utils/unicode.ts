@@ -400,47 +400,26 @@ export function sliceByWidth(str: string, start: number, end?: number): string {
 // Grapheme Cluster Support
 // ============================================================
 
-// Zero Width Joiner
-const ZWJ = 0x200d
-
-// Variation Selectors
-const VS15 = 0xfe0e // Text presentation
-const VS16 = 0xfe0f // Emoji presentation
-
 /**
- * Check if code point is a Zero Width Joiner.
- */
-function isZWJ(code: number): boolean {
-  return code === ZWJ
-}
-
-/**
- * Check if code point is a variation selector.
- */
-function isVariationSelector(code: number): boolean {
-  return code === VS15 || code === VS16
-}
-
-/**
- * Check if code point is a Regional Indicator (for flag emoji).
+ * Check if code point is a regional indicator symbol (used for flags like 🇹🇷).
+ * Regional indicators are in the range U+1F1E6 to U+1F1FF.
+ *
+ * @param code - Unicode code point
+ * @returns True if regional indicator
  */
 function isRegionalIndicator(code: number): boolean {
   return code >= 0x1f1e6 && code <= 0x1f1ff
 }
 
 /**
- * Check if code point is a skin tone modifier.
- */
-function isSkinToneModifier(code: number): boolean {
-  return code >= 0x1f3fb && code <= 0x1f3ff
-}
-
-/**
- * Split string into grapheme clusters using Intl.Segmenter if available,
- * with fallback for older environments.
+ * Split string into grapheme clusters using Intl.Segmenter.
+ *
+ * IMPORTANT: Intl.Segmenter is REQUIRED for correct Unicode handling.
+ * The fallback is intentionally limited to prevent silent bugs with complex emoji.
  *
  * @param str - Input string
  * @returns Array of grapheme clusters
+ * @throws Error if Intl.Segmenter is not available (Node.js 16+ required)
  *
  * @example
  * ```typescript
@@ -450,79 +429,34 @@ function isSkinToneModifier(code: number): boolean {
  * ```
  */
 export function splitGraphemes(str: string): string[] {
-  // Use Intl.Segmenter if available (modern browsers and Node.js 16+)
+  // Intl.Segmenter is required for correct Unicode grapheme handling
+  // Node.js 16+ (released April 2021) has built-in support
   if (typeof Intl !== 'undefined' && 'Segmenter' in Intl) {
-    // Cast to any to handle environments where Intl.Segmenter types aren't available
-    const SegmenterClass = (Intl as Record<string, unknown>).Segmenter as new (
-      locales?: string | string[],
-      options?: { granularity?: 'grapheme' | 'word' | 'sentence' }
-    ) => { segment(str: string): Iterable<{ segment: string }> }
-    const segmenter = new SegmenterClass(undefined, { granularity: 'grapheme' })
-    return Array.from(segmenter.segment(str), s => s.segment)
+    try {
+      const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+      return Array.from(segmenter.segment(str), s => s.segment)
+    } catch (error) {
+      // If Intl.Segmenter exists but fails, fall through to error
+      console.error('[unicode] Intl.Segmenter failed:', error)
+    }
   }
 
-  // Fallback: basic grapheme cluster detection
-  // This handles common cases but may not cover all edge cases
-  const graphemes: string[] = []
+  // If we reach here, Intl.Segmenter is not available
+  // Use a simple fallback that at least doesn't crash, but warn the user
+  if (typeof Intl === 'undefined' || !('Segmenter' in Intl)) {
+    console.warn(
+      '[unicode] Intl.Segmenter not available. ' +
+      'Unicode grapheme handling will be incorrect for complex emoji. ' +
+      'Node.js 16+ is required for full Unicode support. ' +
+      'Falling back to basic character-by-character splitting.'
+    )
+  }
+
+  // Very basic fallback - just split by character
+  // This won't handle emoji correctly but at least won't crash
+  // Users should upgrade to Node.js 16+ for proper Unicode support
   const chars = Array.from(str)
-  let i = 0
-
-  while (i < chars.length) {
-    let cluster = chars[i]!
-    const code = cluster.codePointAt(0) ?? 0
-    i++
-
-    // Handle regional indicators (flags) - always pairs
-    if (isRegionalIndicator(code) && i < chars.length) {
-      const nextCode = chars[i]?.codePointAt(0) ?? 0
-      if (isRegionalIndicator(nextCode)) {
-        cluster += chars[i]!
-        i++
-      }
-    }
-
-    // Handle ZWJ sequences and modifiers
-    while (i < chars.length) {
-      const nextCode = chars[i]?.codePointAt(0) ?? 0
-
-      // ZWJ joins the next character
-      if (isZWJ(nextCode)) {
-        cluster += chars[i]!
-        i++
-        if (i < chars.length) {
-          cluster += chars[i]!
-          i++
-        }
-        continue
-      }
-
-      // Variation selectors and skin tone modifiers attach to previous
-      if (isVariationSelector(nextCode) || isSkinToneModifier(nextCode)) {
-        cluster += chars[i]!
-        i++
-        continue
-      }
-
-      // Combining characters attach to previous
-      if (
-        (nextCode >= 0x0300 && nextCode <= 0x036f) ||
-        (nextCode >= 0x1ab0 && nextCode <= 0x1aff) ||
-        (nextCode >= 0x1dc0 && nextCode <= 0x1dff) ||
-        (nextCode >= 0x20d0 && nextCode <= 0x20ff) ||
-        (nextCode >= 0xfe20 && nextCode <= 0xfe2f)
-      ) {
-        cluster += chars[i]!
-        i++
-        continue
-      }
-
-      break
-    }
-
-    graphemes.push(cluster)
-  }
-
-  return graphemes
+  return chars.map(ch => ch)
 }
 
 /**

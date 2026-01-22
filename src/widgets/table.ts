@@ -91,8 +91,8 @@ class TableNodeImpl<T extends Record<string, unknown> = Record<string, unknown>>
 
   private _onSelectHandlers: ((row: T, index: number) => void)[] = []
   private _onChangeHandlers: ((row: T, index: number) => void)[] = []
-  private _onFocusHandlers: (() => void)[] = []
-  private _onBlurHandlers: (() => void)[] = []
+  override _onFocusHandlers: (() => void)[] = []
+  override _onBlurHandlers: (() => void)[] = []
 
   constructor(props?: TableProps<T>) {
     super()
@@ -194,18 +194,18 @@ class TableNodeImpl<T extends Record<string, unknown> = Record<string, unknown>>
     return this
   }
 
-  onFocus(handler: () => void): this {
+  override onFocus(handler: () => void): this {
     this._onFocusHandlers.push(handler)
     return this
   }
 
-  onBlur(handler: () => void): this {
+  override onBlur(handler: () => void): this {
     this._onBlurHandlers.push(handler)
     return this
   }
 
   // Focus control
-  focus(): this {
+  override focus(): this {
     if (!this._focused) {
       this._focused = true
       this.markDirty()
@@ -216,7 +216,7 @@ class TableNodeImpl<T extends Record<string, unknown> = Record<string, unknown>>
     return this
   }
 
-  blur(): this {
+  override blur(): this {
     if (this._focused) {
       this._focused = false
       this.markDirty()

@@ -20,6 +20,9 @@ export type TUIErrorCode =
   | 'INVALID_COLOR'
   | 'NOT_RUNNING'
   | 'ALREADY_RUNNING'
+  | 'BUFFER_INVALID_SIZE'
+  | 'NODE_DISPOSED'
+  | 'NODE_MAX_CHILDREN'
 
 /**
  * Base TUI error class.
@@ -204,7 +207,107 @@ export function createError(code: TUIErrorCode, message: string): TUIError {
       return new ValidationError(message)
     case 'STREAM_ERROR':
       return new StreamError(message)
+    case 'BUFFER_INVALID_SIZE':
+      return new BufferSizeError(0, 0)
+    case 'NODE_DISPOSED':
+      return new DisposedNodeError('', '')
+    case 'NODE_MAX_CHILDREN':
+      return new NodeMaxChildrenError('')
     default:
       return new TUIError(message, code)
+  }
+}
+
+/**
+ * Buffer size error.
+ *
+ * Thrown when attempting to create a buffer with invalid dimensions.
+ *
+ * @example
+ * ```typescript
+ * throw new BufferSizeError(-1, 100)  // Invalid width
+ * ```
+ */
+export class BufferSizeError extends TUIError {
+  /**
+   * Create a buffer size error.
+   * @param width - Invalid width
+   * @param height - Invalid height
+   */
+  constructor(
+    public readonly width: number,
+    public readonly height: number
+  ) {
+    super(
+      `Invalid buffer size: ${width}x${height}. ` +
+      `Width and height must be positive numbers, and size must not exceed 1,000,000 cells.`,
+      'BUFFER_INVALID_SIZE'
+    )
+    this.name = 'BufferSizeError'
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(this, BufferSizeError)
+    }
+  }
+}
+
+/**
+ * Disposed node error.
+ *
+ * Thrown when attempting to operate on a node that has been disposed.
+ *
+ * @example
+ * ```typescript
+ * throw new DisposedNodeError('node_123', 'addChild')
+ * ```
+ */
+export class DisposedNodeError extends TUIError {
+  /**
+   * Create a disposed node error.
+   * @param nodeId - ID of the disposed node
+   * @param operation - Operation that was attempted
+   */
+  constructor(
+    public readonly nodeId: string,
+    public readonly operation: string
+  ) {
+    super(
+      `Cannot ${operation} on disposed node "${nodeId}". ` +
+      `The node has been disposed and can no longer be used.`,
+      'NODE_DISPOSED'
+    )
+    this.name = 'DisposedNodeError'
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(this, DisposedNodeError)
+    }
+  }
+}
+
+/**
+ * Maximum children exceeded error.
+ *
+ * Thrown when attempting to add more children than allowed to a container.
+ *
+ * @example
+ * ```typescript
+ * throw new NodeMaxChildrenError('node_456')
+ * ```
+ */
+export class NodeMaxChildrenError extends TUIError {
+  /**
+   * Create a max children error.
+   * @param parentId - ID of the parent node
+   */
+  constructor(
+    public readonly parentId: string
+  ) {
+    super(
+      `Maximum children limit reached for node "${parentId}". ` +
+      `Cannot add more children. Consider using virtual scrolling for large lists.`,
+      'NODE_MAX_CHILDREN'
+    )
+    this.name = 'NodeMaxChildrenError'
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(this, NodeMaxChildrenError)
+    }
   }
 }

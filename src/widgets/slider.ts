@@ -106,8 +106,8 @@ class SliderNodeImpl extends LeafNode implements SliderNode {
   private _focused: boolean = false
 
   private _onChangeHandlers: ((value: number) => void)[] = []
-  private _onFocusHandlers: (() => void)[] = []
-  private _onBlurHandlers: (() => void)[] = []
+  override _onFocusHandlers: (() => void)[] = []
+  override _onBlurHandlers: (() => void)[] = []
 
   constructor(props?: SliderProps) {
     super()
@@ -271,7 +271,7 @@ class SliderNodeImpl extends LeafNode implements SliderNode {
     return this.setValue(value)
   }
 
-  focus(): this {
+  override focus(): this {
     if (this._disabled) return this
     if (!this._focused && !this._disposed) {
       this._focused = true
@@ -283,7 +283,7 @@ class SliderNodeImpl extends LeafNode implements SliderNode {
     return this
   }
 
-  blur(): this {
+  override blur(): this {
     if (this._focused) {
       this._focused = false
       this.markDirty()
@@ -300,12 +300,12 @@ class SliderNodeImpl extends LeafNode implements SliderNode {
     return this
   }
 
-  onFocus(handler: () => void): this {
+  override onFocus(handler: () => void): this {
     this._onFocusHandlers.push(handler)
     return this
   }
 
-  onBlur(handler: () => void): this {
+  override onBlur(handler: () => void): this {
     this._onBlurHandlers.push(handler)
     return this
   }

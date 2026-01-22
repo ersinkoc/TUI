@@ -367,8 +367,82 @@ export const INPUT_CURSOR_BLINK_INTERVAL = 530
 /** Maximum navigation history size */
 export const ROUTER_MAX_HISTORY_SIZE = 50
 
-/** Maximum redirect depth to prevent infinite loops */
+/**
+ * Maximum redirect depth to prevent infinite loops.
+ *
+ * Limits how many consecutive redirects the router will follow before
+ * throwing an error. This prevents infinite redirect loops.
+ *
+ * @default 10
+ */
 export const ROUTER_MAX_REDIRECT_DEPTH = 10
 
-/** Maximum route pattern cache size */
+/**
+ * Maximum route pattern cache size.
+ *
+ * Limits the number of compiled route patterns kept in memory.
+ * Helps prevent memory bloat in applications with many dynamic routes.
+ *
+ * @default 100
+ */
 export const ROUTER_MAX_CACHE_SIZE = 100
+
+/**
+ * Navigation guard timeout in milliseconds.
+ *
+ * Maximum time allowed for a navigation guard to complete before
+ * the operation is cancelled. Prevents hanging navigation.
+ *
+ * @default 5000
+ */
+export const ROUTER_GUARD_TIMEOUT = 5000
+
+/**
+ * Maximum layout recursion depth to prevent stack overflow.
+ *
+ * Prevents stack overflow from deeply nested or circular container structures.
+ * Typical UI layouts rarely exceed 20 levels of nesting. This limit of 100
+ * provides a large safety margin while preventing infinite loops.
+ *
+ * If you hit this limit, consider:
+ * - Flattening your UI structure
+ * - Using virtual scrolling for large lists
+ * - Checking for circular parent references
+ *
+ * @default 100
+ */
+export const LAYOUT_MAX_DEPTH = 100
+
+/**
+ * Maximum tree traversal depth to prevent stack overflow.
+ *
+ * Prevents stack overflow during tree traversal operations like
+ * findNodeById, findNodeAtPosition, etc. Higher than LAYOUT_MAX_DEPTH
+ * because tree operations may need to traverse the entire tree, not just
+ * the layout hierarchy.
+ *
+ * @default 1000
+ */
+export const TREE_MAX_DEPTH = 1000
+
+/**
+ * Maximum escape sequence length to prevent DoS.
+ *
+ * Prevents denial-of-service attacks via extremely long escape sequences.
+ * Most terminal escape sequences are under 32 bytes. This limit allows
+ * for complex sequences while preventing abuse.
+ *
+ * @default 64
+ */
+export const MAX_ESCAPE_SEQUENCE_LENGTH = 64
+
+/**
+ * Maximum children per container node.
+ *
+ * Prevents memory exhaustion and performance degradation from
+ * containers with excessive children. For large lists, use
+ * virtual scrolling widgets instead.
+ *
+ * @default 10000
+ */
+export const MAX_CHILDREN_PER_NODE = 10000

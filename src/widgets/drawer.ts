@@ -427,7 +427,7 @@ class DrawerNodeImpl extends ContainerNode implements DrawerNode {
   }
 
   // Focus
-  focus(): this {
+  override focus(): this {
     this._isFocused = true
     if (this._selectedIndex < 0) {
       const flatItems = this.flattenItems()
@@ -443,7 +443,7 @@ class DrawerNodeImpl extends ContainerNode implements DrawerNode {
     return this
   }
 
-  blur(): this {
+  override blur(): this {
     this._isFocused = false
     this.markDirty()
     return this

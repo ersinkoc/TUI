@@ -296,7 +296,7 @@ class PaginationNodeImpl extends LeafNode implements PaginationNode {
   }
 
   // Focus
-  focus(): this {
+  override focus(): this {
     this._isFocused = true
     this._focusedButton = 'page'
     this._focusedPageIndex = this._currentPage
@@ -304,7 +304,7 @@ class PaginationNodeImpl extends LeafNode implements PaginationNode {
     return this
   }
 
-  blur(): this {
+  override blur(): this {
     this._isFocused = false
     this.markDirty()
     return this

@@ -97,8 +97,8 @@ class ButtonNodeImpl extends LeafNode implements ButtonNode {
   private _pressed: boolean = false
 
   private _onClickHandlers: (() => void)[] = []
-  private _onFocusHandlers: (() => void)[] = []
-  private _onBlurHandlers: (() => void)[] = []
+  override _onFocusHandlers: (() => void)[] = []
+  override _onBlurHandlers: (() => void)[] = []
 
   constructor(props?: ButtonProps) {
     super()
@@ -177,12 +177,12 @@ class ButtonNodeImpl extends LeafNode implements ButtonNode {
     return this
   }
 
-  onFocus(handler: () => void): this {
+  override onFocus(handler: () => void): this {
     this._onFocusHandlers.push(handler)
     return this
   }
 
-  onBlur(handler: () => void): this {
+  override onBlur(handler: () => void): this {
     this._onBlurHandlers.push(handler)
     return this
   }
@@ -231,7 +231,7 @@ class ButtonNodeImpl extends LeafNode implements ButtonNode {
   }
 
   // Focus control
-  focus(): this {
+  override focus(): this {
     if (!this._disabled && !this._focused) {
       this._focused = true
       this.markDirty()
@@ -242,7 +242,7 @@ class ButtonNodeImpl extends LeafNode implements ButtonNode {
     return this
   }
 
-  blur(): this {
+  override blur(): this {
     if (this._focused) {
       this._focused = false
       this.markDirty()

@@ -38,13 +38,6 @@ export function packColor(r: number, g: number, b: number, a: number = 255): num
 }
 
 /**
- * Clamp a color channel value to 0-255 range.
- */
-function clampColorChannel(value: number): number {
-  return Math.max(0, Math.min(255, Math.floor(value)))
-}
-
-/**
  * Unpack a 32-bit color integer to RGBA values.
  *
  * @param packed - Packed color integer
@@ -160,6 +153,38 @@ export function parseRgbColor(rgb: string): number | null {
     return null
   }
 
+  // Check for percentage notation first: rgba(r,g,b, a%)
+  const percentMatch = rgb.match(
+    /^rgba?\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*([\d.]+)%)\s*\)$/i
+  )
+
+  if (percentMatch) {
+    const r = parseInt(percentMatch[1]!, 10)
+    const g = parseInt(percentMatch[2]!, 10)
+    const b = parseInt(percentMatch[3]!, 10)
+    const alphaPercent = parseFloat(percentMatch[4]!)
+
+    if (isNaN(alphaPercent)) {
+      return null
+    }
+
+    // Percentage format: alpha is 0-100
+    const a = Math.round((alphaPercent / 100) * 255)
+
+    // Check for NaN values
+    if (isNaN(r) || isNaN(g) || isNaN(b) || isNaN(a)) {
+      return null
+    }
+
+    // Clamp values to 0-255 range
+    const clampedR = Math.max(0, Math.min(255, r))
+    const clampedG = Math.max(0, Math.min(255, g))
+    const clampedB = Math.max(0, Math.min(255, b))
+    const clampedA = Math.max(0, Math.min(255, a))
+
+    return packColor(clampedR, clampedG, clampedB, clampedA)
+  }
+
   // Match rgb(r, g, b) or rgba(r, g, b, a)
   const rgbMatch = rgb.match(
     /^rgba?\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*([\d.]+))?\s*\)$/i
@@ -175,18 +200,21 @@ export function parseRgbColor(rgb: string): number | null {
   let a = 255
 
   if (rgbMatch[4] !== undefined) {
-    const alpha = parseFloat(rgbMatch[4])
+    const alpha = parseFloat(rgbMatch[4]!)
 
     if (isNaN(alpha)) {
       return null
     }
 
-    // If alpha is in 0-1 range, convert to 0-255
-    // Use <= 1 to correctly identify 0-1 range values (0.5, 0.8, 1.0)
-    // Values > 1 are treated as already in 0-255 range (255, 128, etc.)
-    if (alpha <= 1) {
+    // Disambiguate alpha format:
+    // - If alpha < 1: treated as decimal (0-1 range), e.g., 0.5 = 50% opacity
+    // - If alpha >= 1 and <= 255: treated as direct value (0-255 range)
+    // - Values > 255: treated as direct but will be clamped
+    if (alpha < 1) {
+      // Decimal format: alpha is 0-1
       a = Math.round(alpha * 255)
     } else {
+      // Direct format: alpha is 0-255
       a = Math.round(alpha)
     }
   }

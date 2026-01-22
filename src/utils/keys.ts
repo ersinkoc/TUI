@@ -9,12 +9,16 @@ import {
   CSI_KEY_NAMES,
   CSI_PARAM_KEY_NAMES,
   SS3_KEY_NAMES,
-  ESC
+  ESC,
+  MAX_ESCAPE_SEQUENCE_LENGTH
 } from '../constants'
 
 // ============================================================
 // Key Parser
 // ============================================================
+
+/** Pending buffer timeout in milliseconds (5 seconds) */
+const PENDING_BUFFER_TIMEOUT = 5000
 
 /**
  * Key parser interface.
@@ -26,12 +30,18 @@ export interface KeyParser {
    * @returns Array of key events
    */
   parse(data: Buffer): KeyEvent[]
+  /**
+   * Clear the pending buffer.
+   * Useful for resetting parser state after timeout or connection issues.
+   */
+  clear(): void
 }
 
 /**
  * Create a key parser.
  *
  * Handles incomplete escape sequences by buffering partial data across calls.
+ * Stale pending buffers are automatically cleared after a timeout.
  *
  * @returns Key parser instance
  *
@@ -40,15 +50,26 @@ export interface KeyParser {
  * const parser = createKeyParser()
  * const events = parser.parse(Buffer.from('\x1b[A'))
  * // [{ name: 'up', ... }]
+ *
+ * // Manually clear buffer if needed
+ * parser.clear()
  * ```
  */
 export function createKeyParser(): KeyParser {
   // Buffer for incomplete escape sequences
   let pendingBuffer = ''
+  let pendingBufferTime = 0
 
   return {
     parse(data: Buffer): KeyEvent[] {
       const events: KeyEvent[] = []
+
+      // Clear stale pending buffer (timeout mechanism)
+      if (pendingBuffer && Date.now() - pendingBufferTime > PENDING_BUFFER_TIMEOUT) {
+        pendingBuffer = ''
+        pendingBufferTime = 0
+      }
+
       const str = pendingBuffer + data.toString('utf8')
       pendingBuffer = ''
       let i = 0
@@ -60,6 +81,7 @@ export function createKeyParser(): KeyParser {
         if (result.incomplete) {
           // Buffer the remaining data for next parse call
           pendingBuffer = str.slice(i)
+          pendingBufferTime = Date.now()
           break
         }
 
@@ -67,7 +89,17 @@ export function createKeyParser(): KeyParser {
         i += result.consumed
       }
 
+      // Clear timestamp if buffer is empty
+      if (!pendingBuffer) {
+        pendingBufferTime = 0
+      }
+
       return events
+    },
+
+    clear(): void {
+      pendingBuffer = ''
+      pendingBufferTime = 0
     }
   }
 }
@@ -167,8 +199,9 @@ function parseCSI(str: string, start: number): ParseKeyResult {
   // Find end of CSI sequence (letter that's not a parameter)
   let end = start + 2
   let foundTerminator = false
+  const maxEnd = Math.min(str.length, start + MAX_ESCAPE_SEQUENCE_LENGTH)
 
-  while (end < str.length) {
+  while (end < maxEnd) {
     const c = str[end]
     if (c !== undefined && c >= '@' && c <= '~') {
       end++
@@ -176,6 +209,15 @@ function parseCSI(str: string, start: number): ParseKeyResult {
       break
     }
     end++
+  }
+
+  // If we exceeded max length without finding terminator, treat as malformed
+  if (!foundTerminator && end >= start + MAX_ESCAPE_SEQUENCE_LENGTH) {
+    // Skip the malformed sequence
+    return {
+      key: createKeyEvent('unknown', str.slice(start, start + 2)),
+      consumed: 2
+    }
   }
 
   // If we didn't find a terminator, the sequence is incomplete

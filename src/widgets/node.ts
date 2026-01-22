@@ -4,22 +4,32 @@
  */
 
 import type { Node, Bounds, LayoutProps, StyleProps, Buffer, CellStyle } from '../types'
+import { TREE_MAX_DEPTH, MAX_CHILDREN_PER_NODE } from '../constants'
+import { DisposedNodeError, NodeMaxChildrenError } from '../errors'
 
 // ============================================================
 // ID Generation
 // ============================================================
 
-// Use BigInt for safe counter that never overflows
-let idCounter = 0n
+// Use regular number counter (safe up to 2^53 - 1 IDs)
+let idCounter = 0
+
+// NOTE: Global _nodeIndex removed to prevent memory leaks.
+// Tree traversal (O(depth)) is used instead of O(1) index lookup.
+// This is acceptable because tree depth is bounded by TREE_MAX_DEPTH (1000).
 
 /**
  * Generate a unique node ID.
  *
+ * Combines timestamp (masked to 24 bits) with counter for uniqueness.
+ * Uses base36 encoding for compact IDs.
+ *
  * @returns Unique ID string
  */
 export function generateId(): string {
-  idCounter++
-  return `node_${idCounter}`
+  const id = ++idCounter
+  const time = Date.now() & 0xffffff
+  return `node_${time}_${id.toString(36)}`
 }
 
 /**
@@ -30,7 +40,7 @@ export function resetIdCounter(): void {
   if (process.env.NODE_ENV !== 'test' && process.env.NODE_ENV !== 'development') {
     console.warn('resetIdCounter() should only be used in tests')
   }
-  idCounter = 0n
+  idCounter = 0
 }
 
 // ============================================================
@@ -135,9 +145,7 @@ export abstract class BaseNode implements Node {
   /** @internal */
   _disposed: boolean = false
 
-  // Cache for bounds getter to avoid object creation
-  private _boundsCache: Bounds | null = null
-  private _boundsVersion: number = 0
+  // Dirty tracking version for change detection
   private _currentVersion: number = 0
 
   // Focus/Blur handler registries
@@ -148,6 +156,7 @@ export abstract class BaseNode implements Node {
 
   constructor() {
     this.id = generateId()
+    // Note: No longer registering in global index to prevent memory leaks
   }
 
   /**
@@ -166,9 +175,15 @@ export abstract class BaseNode implements Node {
     if (this._disposed) return
     this._disposed = true
 
-    // Dispose all children first
-    for (const child of this._children) {
-      child.dispose()
+    // Dispose all children first (wrapped in try-catch to ensure all children are disposed)
+    const children = [...this._children] // Snapshot to prevent mutation during iteration
+    for (const child of children) {
+      try {
+        child.dispose()
+      } catch (error) {
+        // Log error but continue disposing other children
+        console.error(`Error disposing child node ${child.id}:`, error)
+      }
     }
 
     // Remove from parent
@@ -177,6 +192,10 @@ export abstract class BaseNode implements Node {
     }
     this._parent = null
     this._children = []
+
+    // Clear focus/blur handlers
+    this._onFocusHandlers = []
+    this._onBlurHandlers = []
   }
 
   get parent(): Node | null {
@@ -233,31 +252,21 @@ export abstract class BaseNode implements Node {
   /**
    * Register a handler to be called when this node is focused.
    * @param handler - Function to call on focus
-   * @returns Unsubscribe function
+   * @returns This node for method chaining
    */
-  onFocus(handler: () => void): () => void {
+  onFocus(handler: () => void): this {
     this._onFocusHandlers.push(handler)
-    return () => {
-      const index = this._onFocusHandlers.indexOf(handler)
-      if (index !== -1) {
-        this._onFocusHandlers.splice(index, 1)
-      }
-    }
+    return this
   }
 
   /**
    * Register a handler to be called when this node is blurred.
    * @param handler - Function to call on blur
-   * @returns Unsubscribe function
+   * @returns This node for method chaining
    */
-  onBlur(handler: () => void): () => void {
+  onBlur(handler: () => void): this {
     this._onBlurHandlers.push(handler)
-    return () => {
-      const index = this._onBlurHandlers.indexOf(handler)
-      if (index !== -1) {
-        this._onBlurHandlers.splice(index, 1)
-      }
-    }
+    return this
   }
 
   /**
@@ -321,11 +330,21 @@ export abstract class ContainerNode extends BaseNode {
   /**
    * Add a child node.
    * @param child - Child to add
+   * @throws {DisposedNodeError} If child is already disposed
+   * @throws {NodeMaxChildrenError} If maximum children limit reached
    */
   add(child: Node): this {
     if (child instanceof BaseNode) {
       if (child._disposed) {
-        console.warn('Attempting to add a disposed node')
+        throw new DisposedNodeError(child.id, 'add')
+      }
+      // Prevent unbounded children
+      if (this._children.length >= MAX_CHILDREN_PER_NODE) {
+        throw new NodeMaxChildrenError(this.id)
+      }
+      // Check if already a child of this parent (prevent duplicates)
+      if (child._parent === this) {
+        // Already a child, no-op
         return this
       }
       // Remove from previous parent
@@ -391,6 +410,18 @@ export abstract class ContainerNode extends BaseNode {
    */
   insertAt(index: number, child: Node): this {
     if (child instanceof BaseNode) {
+      // Check if already a child of this parent (prevent duplicates)
+      if (child._parent === this) {
+        // Already a child, just move to new position
+        const currentIndex = this._children.indexOf(child)
+        if (currentIndex !== -1) {
+          this._children.splice(currentIndex, 1)
+          this._children.splice(index, 0, child)
+          this.markDirty()
+        }
+        return this
+      }
+      // Remove from previous parent
       if (child._parent && child._parent instanceof ContainerNode) {
         child._parent.remove(child)
       }
@@ -443,19 +474,29 @@ export abstract class LeafNode extends BaseNode {
 // ============================================================
 
 /**
- * Find node by ID in tree.
+ * Find node by ID in tree using depth-first traversal.
+ * Uses tree traversal instead of global index to prevent memory leaks.
+ * Time complexity: O(n) where n is the number of nodes in the tree.
  *
  * @param root - Root node to search from
  * @param id - ID to find
+ * @param depth - Current recursion depth (internal)
  * @returns Found node or undefined
  */
-export function findNodeById(root: Node, id: string): Node | undefined {
+export function findNodeById(root: Node, id: string, depth: number = 0): Node | undefined {
+  // Prevent stack overflow from deeply nested or circular structures
+  if (depth >= TREE_MAX_DEPTH) {
+    return undefined
+  }
+
+  // Check if root matches
   if (root.id === id) {
     return root
   }
 
+  // Search children recursively
   for (const child of root.children) {
-    const found = findNodeById(child, id)
+    const found = findNodeById(child, id, depth + 1)
     if (found) return found
   }
 
@@ -467,9 +508,15 @@ export function findNodeById(root: Node, id: string): Node | undefined {
  *
  * @param root - Root node to search from
  * @param type - Type to find
+ * @param depth - Current recursion depth (internal)
  * @returns Array of matching nodes
  */
-export function findNodesByType(root: Node, type: string): Node[] {
+export function findNodesByType(root: Node, type: string, depth: number = 0): Node[] {
+  // Prevent stack overflow from deeply nested or circular structures
+  if (depth >= TREE_MAX_DEPTH) {
+    return []
+  }
+
   const results: Node[] = []
 
   if (root.type === type) {
@@ -477,7 +524,7 @@ export function findNodesByType(root: Node, type: string): Node[] {
   }
 
   for (const child of root.children) {
-    results.push(...findNodesByType(child, type))
+    results.push(...findNodesByType(child, type, depth + 1))
   }
 
   return results
@@ -488,11 +535,17 @@ export function findNodesByType(root: Node, type: string): Node[] {
  *
  * @param root - Root node
  * @param visitor - Visitor function
+ * @param depth - Current recursion depth (internal)
  */
-export function traverseDepthFirst(root: Node, visitor: (node: Node) => void): void {
+export function traverseDepthFirst(root: Node, visitor: (node: Node) => void, depth: number = 0): void {
+  // Prevent stack overflow from deeply nested or circular structures
+  if (depth >= TREE_MAX_DEPTH) {
+    return
+  }
+
   visitor(root)
   for (const child of root.children) {
-    traverseDepthFirst(child, visitor)
+    traverseDepthFirst(child, visitor, depth + 1)
   }
 }
 
@@ -504,8 +557,16 @@ export function traverseDepthFirst(root: Node, visitor: (node: Node) => void): v
  */
 export function traverseBreadthFirst(root: Node, visitor: (node: Node) => void): void {
   const queue: Node[] = [root]
+  let iterations = 0
+  // Use TREE_MAX_DEPTH squared as max iterations (covers max depth * max breadth)
+  const maxIterations = TREE_MAX_DEPTH * TREE_MAX_DEPTH
 
   while (queue.length > 0) {
+    // Prevent infinite loops from circular references or huge trees
+    if (iterations++ >= maxIterations) {
+      return
+    }
+
     const node = queue.shift()!
     visitor(node)
     queue.push(...node.children)
@@ -521,8 +582,13 @@ export function traverseBreadthFirst(root: Node, visitor: (node: Node) => void):
 export function getAncestors(node: Node): Node[] {
   const ancestors: Node[] = []
   let current = node.parent
+  let depth = 0
 
   while (current) {
+    // Prevent infinite loops from circular parent references
+    if (depth++ >= TREE_MAX_DEPTH) {
+      break
+    }
     ancestors.push(current)
     current = current.parent
   }
@@ -534,14 +600,20 @@ export function getAncestors(node: Node): Node[] {
  * Get all descendants of a node.
  *
  * @param node - Node to get descendants of
+ * @param depth - Current recursion depth (internal)
  * @returns Array of descendants (depth-first order)
  */
-export function getDescendants(node: Node): Node[] {
+export function getDescendants(node: Node, depth: number = 0): Node[] {
+  // Prevent stack overflow from deeply nested or circular structures
+  if (depth >= TREE_MAX_DEPTH) {
+    return []
+  }
+
   const descendants: Node[] = []
 
   for (const child of node.children) {
     descendants.push(child)
-    descendants.push(...getDescendants(child))
+    descendants.push(...getDescendants(child, depth + 1))
   }
 
   return descendants
@@ -556,8 +628,13 @@ export function getDescendants(node: Node): Node[] {
  */
 export function isAncestorOf(ancestor: Node, descendant: Node): boolean {
   let current = descendant.parent
+  let depth = 0
 
   while (current) {
+    // Prevent infinite loops from circular parent references
+    if (depth++ >= TREE_MAX_DEPTH) {
+      return false
+    }
     if (current === ancestor) return true
     current = current.parent
   }
@@ -576,7 +653,12 @@ export function getCommonAncestor(a: Node, b: Node): Node | undefined {
   const ancestorsA = new Set<Node>([a, ...getAncestors(a)])
 
   let current: Node | null = b
+  let depth = 0
   while (current) {
+    // Prevent infinite loops from circular parent references
+    if (depth++ >= TREE_MAX_DEPTH) {
+      return undefined
+    }
     if (ancestorsA.has(current)) return current
     current = current.parent
   }
@@ -590,9 +672,15 @@ export function getCommonAncestor(a: Node, b: Node): Node | undefined {
  * @param root - Root node
  * @param x - X coordinate
  * @param y - Y coordinate
+ * @param depth - Current recursion depth (internal)
  * @returns Node at position or undefined
  */
-export function findNodeAtPosition(root: Node, x: number, y: number): Node | undefined {
+export function findNodeAtPosition(root: Node, x: number, y: number, depth: number = 0): Node | undefined {
+  // Prevent stack overflow from deeply nested or circular structures
+  if (depth >= TREE_MAX_DEPTH) {
+    return undefined
+  }
+
   // Check if point is in bounds
   const bounds = root.bounds
   if (
@@ -608,7 +696,7 @@ export function findNodeAtPosition(root: Node, x: number, y: number): Node | und
   for (let i = root.children.length - 1; i >= 0; i--) {
     const child = root.children[i]!
     if (child.isVisible) {
-      const found = findNodeAtPosition(child, x, y)
+      const found = findNodeAtPosition(child, x, y, depth + 1)
       if (found) return found
     }
   }

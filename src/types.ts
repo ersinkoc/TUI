@@ -589,8 +589,14 @@ export interface Plugin {
   name: string
   /** Plugin version */
   version: string
-  /** Plugin dependencies */
+  /** Required plugin dependencies (must be loaded before this plugin) */
   dependencies?: string[]
+  /** Optional plugin dependencies (loaded before if available) */
+  optionalDependencies?: string[]
+  /** Load after these specific plugins (by name) */
+  after?: string[]
+  /** Load before these specific plugins (by name) */
+  before?: string[]
   /** Install hook - receives the TUI app instance */
   install(app: TUIApp): void
   /** Called before render */

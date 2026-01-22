@@ -710,8 +710,8 @@ describe('animationPlugin', () => {
       // Start the loop
       ;(app as any).animation.requestFrame(() => {})
 
-      // Run 60 frames (one second at 60fps)
-      for (let i = 0; i < 60; i++) {
+      // Run 70 frames (~1120ms at 16ms/frame) to ensure FPS update (requires 1000ms)
+      for (let i = 0; i < 70; i++) {
         advanceTime(16)
         vi.advanceTimersByTime(16)
       }

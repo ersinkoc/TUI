@@ -117,8 +117,8 @@ class AccordionNodeImpl extends ContainerNode implements AccordionNode {
 
   private _onExpandHandlers: ((id: string) => void)[] = []
   private _onCollapseHandlers: ((id: string) => void)[] = []
-  private _onFocusHandlers: (() => void)[] = []
-  private _onBlurHandlers: (() => void)[] = []
+  override _onFocusHandlers: (() => void)[] = []
+  override _onBlurHandlers: (() => void)[] = []
 
   constructor(props?: AccordionProps) {
     super()
@@ -308,7 +308,7 @@ class AccordionNodeImpl extends ContainerNode implements AccordionNode {
     return this
   }
 
-  focus(): this {
+  override focus(): this {
     if (!this._focused && !this._disposed) {
       this._focused = true
       this.markDirty()
@@ -319,7 +319,7 @@ class AccordionNodeImpl extends ContainerNode implements AccordionNode {
     return this
   }
 
-  blur(): this {
+  override blur(): this {
     if (this._focused) {
       this._focused = false
       this.markDirty()
@@ -356,12 +356,12 @@ class AccordionNodeImpl extends ContainerNode implements AccordionNode {
     return this
   }
 
-  onFocus(handler: () => void): this {
+  override onFocus(handler: () => void): this {
     this._onFocusHandlers.push(handler)
     return this
   }
 
-  onBlur(handler: () => void): this {
+  override onBlur(handler: () => void): this {
     this._onBlurHandlers.push(handler)
     return this
   }

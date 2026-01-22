@@ -12,6 +12,7 @@ import type {
   ResolvedSpacing,
   LayoutProps
 } from '../types'
+import { LAYOUT_MAX_DEPTH } from '../constants'
 
 // ============================================================
 // Layout Engine Implementation
@@ -59,7 +60,7 @@ export function createLayoutEngine(): LayoutEngine {
 
       // Layout children
       if (root.children.length > 0) {
-        layoutChildren(root)
+        layoutChildren(root, 0)
       }
     }
   }
@@ -69,8 +70,14 @@ export function createLayoutEngine(): LayoutEngine {
  * Layout children of a node.
  *
  * @param node - Parent node
+ * @param depth - Current recursion depth
  */
-function layoutChildren(node: Node): void {
+function layoutChildren(node: Node, depth: number): void {
+  // Prevent stack overflow from deeply nested or circular structures
+  if (depth >= LAYOUT_MAX_DEPTH) {
+    console.warn(`[layout] Maximum recursion depth (${LAYOUT_MAX_DEPTH}) exceeded, skipping children`)
+    return
+  }
   const layout = getLayoutProps(node)
   const bounds = node.bounds
   const padding = resolvePadding(layout.padding)
@@ -150,8 +157,11 @@ function layoutChildren(node: Node): void {
 
     // Main axis size
     let childMainSize: number
-    if (flex > 0) {
+    if (flex > 0 && totalFlex > 0) {
       childMainSize = (availableForFlex * flex) / totalFlex
+    } else if (flex > 0) {
+      // Safety: totalFlex is 0 but flex > 0 (shouldn't happen, but handle gracefully)
+      childMainSize = availableForFlex
     } else {
       childMainSize = isRow
         ? resolveDimension(childLayout.width, contentWidth)
@@ -237,7 +247,7 @@ function layoutChildren(node: Node): void {
 
     // Recursively layout grandchildren
     if (child.children.length > 0) {
-      layoutChildren(child)
+      layoutChildren(child, depth + 1)
     }
 
     // Move to next position
@@ -371,29 +381,121 @@ export const resolveMargin = resolvePadding
 // ============================================================
 
 /**
+ * Type guard to check if an object has a specific property.
+ */
+function hasProperty<K extends string>(obj: unknown, key: K): obj is Record<K, unknown> {
+  return typeof obj === 'object' && obj !== null && key in obj
+}
+
+/**
+ * Check if a value is a valid LayoutProps object.
+ */
+function isValidLayoutProps(value: unknown): value is LayoutProps {
+  if (typeof value !== 'object' || value === null) {
+    return false
+  }
+
+  // Check that all properties in LayoutProps are valid types
+  const props = value as Record<string, unknown>
+
+  // Validate width
+  if (
+    props.width !== undefined &&
+    typeof props.width !== 'number' &&
+    typeof props.width !== 'string'
+  ) {
+    return false
+  }
+
+  // Validate height
+  if (
+    props.height !== undefined &&
+    typeof props.height !== 'number' &&
+    typeof props.height !== 'string'
+  ) {
+    return false
+  }
+
+  // Validate flex
+  if (props.flex !== undefined && typeof props.flex !== 'number') {
+    return false
+  }
+
+  // Validate flexDirection
+  if (
+    props.flexDirection !== undefined &&
+    typeof props.flexDirection !== 'string'
+  ) {
+    return false
+  }
+
+  // Validate other properties...
+  return true
+}
+
+/**
  * Get layout props from a node.
- * Works with internal node structure.
+ * Works with internal node structure with proper type safety.
  *
  * @param node - Node to get layout from
  * @returns Layout props
  */
 function getLayoutProps(node: Node): LayoutProps {
-  // Access internal _layout property
-  const anyNode = node as unknown as Record<string, unknown>
-  return (anyNode._layout as LayoutProps) ?? {}
+  // Access internal _layout property with comprehensive type guard
+  if (
+    hasProperty(node, '_layout') &&
+    node._layout !== null &&
+    typeof node._layout === 'object' &&
+    isValidLayoutProps(node._layout)
+  ) {
+    return node._layout
+  }
+  return {}
 }
 
 /**
  * Set bounds on a node.
- * Works with internal node structure.
+ * Works with both internal node structure and test mocks.
  *
  * @param node - Node to set bounds on
  * @param bounds - Bounds to set
  */
 function setBounds(node: Node, bounds: Bounds): void {
-  // Access internal _bounds property
-  const anyNode = node as unknown as Record<string, unknown>
-  anyNode._bounds = bounds
+  // Try to use the internal _bounds property first (real BaseNode instances)
+  if (
+    hasProperty(node, '_bounds') &&
+    node._bounds !== null &&
+    typeof node._bounds === 'object'
+  ) {
+    const boundsObj = node._bounds as { x: number; y: number; width: number; height: number }
+    if (
+      typeof boundsObj.x === 'number' &&
+      typeof boundsObj.y === 'number' &&
+      typeof boundsObj.width === 'number' &&
+      typeof boundsObj.height === 'number'
+    ) {
+      // Valid bounds object, update it
+      boundsObj.x = bounds.x
+      boundsObj.y = bounds.y
+      boundsObj.width = bounds.width
+      boundsObj.height = bounds.height
+      return
+    }
+  }
+
+  // Fallback: Try to use the _bounds setter if it exists
+  // Check both the object itself and its prototype chain
+  try {
+    const descriptor =
+      Object.getOwnPropertyDescriptor(node, '_bounds') ||
+      Object.getOwnPropertyDescriptor(Object.getPrototypeOf(node), '_bounds')
+    if (descriptor && descriptor.set) {
+      // Use the setter (test mocks have this)
+      descriptor.set.call(node, bounds)
+    }
+  } catch {
+    // Ignore errors, the setter might not exist or might throw
+  }
 }
 
 // ============================================================
@@ -404,9 +506,15 @@ function setBounds(node: Node, bounds: Bounds): void {
  * Calculate minimum size needed for content.
  *
  * @param node - Node to measure
+ * @param depth - Current recursion depth (internal)
  * @returns Minimum width and height
  */
-export function measureContent(node: Node): { width: number; height: number } {
+export function measureContent(node: Node, depth: number = 0): { width: number; height: number } {
+  // Prevent stack overflow from deeply nested or circular structures
+  if (depth >= LAYOUT_MAX_DEPTH) {
+    return { width: 0, height: 0 }
+  }
+
   const layout = getLayoutProps(node)
 
   // If fixed size, return that
@@ -424,7 +532,7 @@ export function measureContent(node: Node): { width: number; height: number } {
     let height = 0
 
     for (const child of node.children.filter(c => c.isVisible)) {
-      const childSize = measureContent(child)
+      const childSize = measureContent(child, depth + 1)
 
       if (direction === 'row') {
         width += childSize.width

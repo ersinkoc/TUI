@@ -398,7 +398,7 @@ class SearchInputNodeImpl extends LeafNode implements SearchInputNode {
   }
 
   // Focus
-  focus(): this {
+  override focus(): this {
     this._isFocused = true
     if (this._showSuggestions && this._suggestions.length > 0) {
       this._suggestionsOpen = true
@@ -407,7 +407,7 @@ class SearchInputNodeImpl extends LeafNode implements SearchInputNode {
     return this
   }
 
-  blur(): this {
+  override blur(): this {
     this._isFocused = false
     this._suggestionsOpen = false
     this.markDirty()

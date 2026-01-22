@@ -10,6 +10,7 @@ import type { Plugin, TUIApp, MouseEvent, Node, Bounds } from '../types'
 import { createMouseParser } from '../utils/keys'
 import { enableMouse, disableMouse } from '../utils/ansi'
 import { BaseNode, ContainerNode } from '../widgets/node'
+import { TREE_MAX_DEPTH } from '../constants'
 
 // ============================================================
 // Types
@@ -67,17 +68,69 @@ function pointInBounds(x: number, y: number, bounds: Bounds): boolean {
 }
 
 /**
- * Find node at position using hit testing.
+ * Type guard to check if a node has click handler.
  */
-function findNodeAt(node: BaseNode, x: number, y: number): BaseNode | null {
+function hasClickHandler(node: Node): node is Node & { onClick(event: MouseEvent): void } {
+  return typeof (node as { onClick?: unknown }).onClick === 'function'
+}
+
+/**
+ * Type guard to check if a node has scroll handler.
+ */
+function hasScrollHandler(node: Node): node is Node & { onScroll(event: MouseEvent): void } {
+  return typeof (node as { onScroll?: unknown }).onScroll === 'function'
+}
+
+/**
+ * Type guard to check if a node has mouse move handler.
+ */
+function hasMouseMoveHandler(node: Node): node is Node & { onMouseMove(event: MouseEvent): void } {
+  return typeof (node as { onMouseMove?: unknown }).onMouseMove === 'function'
+}
+
+/**
+ * Type guard to check if a node has generic mouse handler.
+ */
+function hasGenericMouseHandler(node: Node): node is Node & { handleMouse(event: MouseEvent): void } {
+  return typeof (node as { handleMouse?: unknown }).handleMouse === 'function'
+}
+
+/**
+ * Type guard to check if a node has mouse enter handler.
+ */
+function hasMouseEnterHandler(node: Node): node is Node & { onMouseEnter(): void } {
+  return typeof (node as { onMouseEnter?: unknown }).onMouseEnter === 'function'
+}
+
+/**
+ * Type guard to check if a node has mouse leave handler.
+ */
+function hasMouseLeaveHandler(node: Node): node is Node & { onMouseLeave(): void } {
+  return typeof (node as { onMouseLeave?: unknown }).onMouseLeave === 'function'
+}
+
+/**
+ * Find node at position using hit testing.
+ * @param node - Node to search in
+ * @param x - X coordinate
+ * @param y - Y coordinate
+ * @param depth - Current recursion depth (internal)
+ */
+function findNodeAt(node: BaseNode, x: number, y: number, depth: number = 0): BaseNode | null {
+  // Prevent stack overflow from deeply nested or circular structures
+  if (depth >= TREE_MAX_DEPTH) {
+    return null
+  }
+
   if (!node.isVisible) return null
+  if (node._disposed) return null
   if (!pointInBounds(x, y, node._bounds)) return null
 
   // Check children first (reverse order for z-index)
   if (node instanceof ContainerNode) {
     for (let i = node._children.length - 1; i >= 0; i--) {
       const child = node._children[i]!
-      const found = findNodeAt(child, x, y)
+      const found = findNodeAt(child, x, y, depth + 1)
       if (found) return found
     }
   }
@@ -127,6 +180,14 @@ export function mousePlugin(options: MousePluginOptions = {}): Plugin {
     const events = mouseParser.parse(data)
 
     for (const event of events) {
+      // Validate coordinates are within valid bounds (non-negative)
+      if (event.x < 0 || event.y < 0 || !Number.isFinite(event.x) || !Number.isFinite(event.y)) {
+        if (debug) {
+          console.error(`[mouse] ignoring event with invalid coordinates: x=${event.x} y=${event.y}`)
+        }
+        continue
+      }
+
       if (debug) {
         console.error(
           `[mouse] action=${event.action} x=${event.x} y=${event.y} button=${event.button}`
@@ -141,21 +202,20 @@ export function mousePlugin(options: MousePluginOptions = {}): Plugin {
 
       // Handle hover enter/leave
       if (event.action === 'move') {
+        // Clear stale reference if node was disposed
+        if (lastHoveredNode && lastHoveredNode._disposed) {
+          lastHoveredNode = null
+        }
+
         if (targetNode !== lastHoveredNode) {
-          // Leave old node
-          if (lastHoveredNode) {
-            const leaveHandler = (lastHoveredNode as { onMouseLeave?: () => void }).onMouseLeave
-            if (typeof leaveHandler === 'function') {
-              leaveHandler()
-            }
+          // Leave old node (only if not disposed)
+          if (lastHoveredNode && !lastHoveredNode._disposed && hasMouseLeaveHandler(lastHoveredNode)) {
+            lastHoveredNode.onMouseLeave()
           }
 
-          // Enter new node
-          if (targetNode) {
-            const enterHandler = (targetNode as { onMouseEnter?: () => void }).onMouseEnter
-            if (typeof enterHandler === 'function') {
-              enterHandler()
-            }
+          // Enter new node (only if not disposed)
+          if (targetNode && !targetNode._disposed && hasMouseEnterHandler(targetNode)) {
+            targetNode.onMouseEnter()
           }
 
           lastHoveredNode = targetNode
@@ -187,38 +247,31 @@ export function mousePlugin(options: MousePluginOptions = {}): Plugin {
   }
 
   /**
-   * Route mouse event to node.
+   * Route mouse event to node using type-safe handler checks.
    */
   function routeToNode(node: BaseNode, event: MouseEvent): void {
-    // Check for specific handlers based on action
+    // Check for specific handlers based on action using type guards
     switch (event.action) {
-      case 'press': {
-        const handler = (node as { onClick?: (event: MouseEvent) => void }).onClick
-        if (typeof handler === 'function') {
-          handler(event)
+      case 'press':
+        if (hasClickHandler(node)) {
+          node.onClick(event)
         }
         break
-      }
-      case 'scroll': {
-        const handler = (node as { onScroll?: (event: MouseEvent) => void }).onScroll
-        if (typeof handler === 'function') {
-          handler(event)
+      case 'scroll':
+        if (hasScrollHandler(node)) {
+          node.onScroll(event)
         }
         break
-      }
-      case 'move': {
-        const handler = (node as { onMouseMove?: (event: MouseEvent) => void }).onMouseMove
-        if (typeof handler === 'function') {
-          handler(event)
+      case 'move':
+        if (hasMouseMoveHandler(node)) {
+          node.onMouseMove(event)
         }
         break
-      }
     }
 
-    // Also check for generic mouse handler
-    const genericHandler = (node as { handleMouse?: (event: MouseEvent) => void }).handleMouse
-    if (typeof genericHandler === 'function') {
-      genericHandler(event)
+    // Also check for generic mouse handler using type guard
+    if (hasGenericMouseHandler(node)) {
+      node.handleMouse(event)
     }
   }
 

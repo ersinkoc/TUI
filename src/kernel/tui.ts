@@ -47,11 +47,137 @@ interface AppState {
   renderScheduled: boolean
   /** Quit handlers */
   quitHandlers: Set<() => void | Promise<void>>
+  /** Critical error state for rendering to screen */
+  criticalError: Error | null
+  /** Error timestamp for display */
+  errorTime: number | null
+  /** Disposal in progress flag - prevents use-after-free */
+  disposalInProgress: boolean
+  /** Pending disposal handler - queued until after render */
+  pendingDisposal: (() => void) | null
 }
 
 // ============================================================
 // Implementation
 // ============================================================
+
+/**
+ * Resolve plugin load order based on dependencies and constraints.
+ * Uses topological sorting with cycle detection.
+ *
+ * "before" constraints are problematic: if plugin A wants to load before B,
+ * but B is already loaded, this creates a deadlock. The solution is to track
+ * attempted loads and detect unsatisfiable "before" constraints early.
+ *
+ * @param plugins - Plugins to resolve
+ * @returns Ordered array of plugins
+ * @throws Error if circular dependencies detected or missing dependencies
+ */
+function resolvePluginOrder(plugins: Plugin[]): Plugin[] {
+  const resolved: Plugin[] = []
+  const remaining = new Map(plugins.map(p => [p.name, p]))
+  const loaded = new Set<string>()
+
+  // Track attempted loads to detect deadlock conditions
+  const attempted = new Set<string>()
+
+  // Track passes to detect cycles
+  let passes = 0
+  const maxPasses = plugins.length * 2 // Double to handle two-phase loading
+
+  // First pass: load plugins without "before" constraints or where before is satisfiable
+  // Second pass: handle plugins with unsatisfiable "before" constraints (warn and load anyway)
+  let phase = 1
+
+  while (remaining.size > 0 && passes < maxPasses) {
+    passes++
+    let loadedThisPass = false
+
+    for (const [name, plugin] of remaining) {
+      // Skip if we already tried to load this plugin in this phase
+      if (phase === 1 && attempted.has(name)) continue
+
+      // Check if all dependencies are loaded
+      const deps = plugin.dependencies ?? []
+      const after = plugin.after ?? []
+      const before = plugin.before ?? []
+
+      // Required dependencies must be loaded
+      const depsLoaded = deps.every(d => loaded.has(d))
+
+      // Optional dependencies don't block loading, but we prefer to load them after
+      // after constraints: these plugins should be loaded before us
+      const afterSatisfied = after.every(a => loaded.has(a))
+
+      // before constraints: we should load before these plugins
+      // In phase 1: only load if no "before" targets are loaded yet
+      // In phase 2: ignore "before" constraints (they're now unsatisfiable)
+      let beforeSatisfied = true
+      if (phase === 1 && before.length > 0) {
+        beforeSatisfied = before.every(b => !loaded.has(b))
+      }
+
+      if (depsLoaded && afterSatisfied && beforeSatisfied) {
+        resolved.push(plugin)
+        loaded.add(name)
+        remaining.delete(name)
+        loadedThisPass = true
+        attempted.delete(name)
+      } else {
+        // Mark as attempted for this phase
+        attempted.add(name)
+      }
+    }
+
+    if (!loadedThisPass) {
+      if (phase === 1) {
+        // Move to phase 2: ignore unsatisfiable "before" constraints
+        phase = 2
+        attempted.clear()
+        // Check if we have "before" constraints that are now unsatisfiable
+        for (const [name, plugin] of remaining) {
+          const before = plugin.before ?? []
+          const hasUnsatisfiableBefore = before.some(b => loaded.has(b))
+          if (hasUnsatisfiableBefore && !attempted.has(name)) {
+            console.warn(
+              `[tui] Plugin "${name}" has unsatisfiable "before" constraint(s). ` +
+              `Target plugins (${before.filter(b => loaded.has(b)).join(', ')}) are already loaded. ` +
+              `Loading "${name}" anyway.`
+            )
+          }
+        }
+      } else {
+        // Phase 2 also failed - genuine circular dependency or missing dependency
+        const remainingNames = Array.from(remaining.keys()).join(', ')
+
+        // Try to provide helpful error message
+        for (const [name, plugin] of remaining) {
+          const deps = plugin.dependencies ?? []
+          const after = plugin.after ?? []
+          const allConstraints = [...deps, ...after]
+
+          for (const constraint of allConstraints) {
+            if (!loaded.has(constraint) && !remaining.has(constraint)) {
+              throw new TUIError(
+                `Plugin "${name}" depends on "${constraint}" which is not available. ` +
+                `Available plugins: ${plugins.map(p => p.name).join(', ')}. `,
+                'PLUGIN_ERROR'
+              )
+            }
+          }
+        }
+
+        throw new TUIError(
+          `Could not resolve plugin dependencies - possible circular dependency. ` +
+          `Remaining plugins: ${remainingNames}.`,
+          'PLUGIN_ERROR'
+        )
+      }
+    }
+  }
+
+  return resolved
+}
 
 /**
  * Create a TUI application.
@@ -111,7 +237,11 @@ export function tui(options: TUIOptions = {}): TUIApp {
     dirty: true,
     listeners: new Map(),
     renderScheduled: false,
-    quitHandlers: new Set()
+    quitHandlers: new Set(),
+    criticalError: null,
+    errorTime: null,
+    disposalInProgress: false,
+    pendingDisposal: null
   }
 
   // Get initial terminal size
@@ -160,14 +290,21 @@ export function tui(options: TUIOptions = {}): TUIApp {
   }
 
   /**
-   * Perform a render cycle.
+   * Perform a render cycle with error boundary protection.
    */
   function render(): void {
     if (!state.running || !state.root || !state.dirty) return
 
-    // Prevent concurrent renders (race condition with resize)
-    if (isRendering) return
+    // Use compare-and-swap pattern for isRendering
+    // If another render is in progress, just mark dirty and return
+    if (isRendering) {
+      state.dirty = true
+      return
+    }
+
     isRendering = true
+    // Set disposal lock to prevent disposal during render
+    state.disposalInProgress = true
 
     // Capture current generation to detect if resize happened during render
     const currentGeneration = resizeGeneration
@@ -176,42 +313,130 @@ export function tui(options: TUIOptions = {}): TUIApp {
       state.renderScheduled = false
       state.dirty = false
 
-      // Call plugin beforeRender hooks
+      // CRITICAL: Check resize BEFORE capturing buffer reference
+      // This prevents use-after-free when resize happens between capture and check
+      if (resizeGeneration !== currentGeneration) {
+        // Resize happened before we could start rendering
+        state.dirty = true
+        return
+      }
+
+      // Now capture buffer reference AFTER resize check
+      // If resize happens after this point, the generation check below will catch it
+      const renderBuffer = state.buffer
+
+      // Validate buffer exists
+      if (!renderBuffer) return
+
+      // Additional safety: validate buffer dimensions match current state
+      // This catches edge cases where buffer was replaced but generation wasn't incremented
+      if (renderBuffer.width !== state.width || renderBuffer.height !== state.height) {
+        state.dirty = true
+        return
+      }
+
+      // Call plugin beforeRender hooks with error boundary
       for (const plugin of state.plugins) {
         if (plugin.beforeRender) {
-          plugin.beforeRender()
+          try {
+            plugin.beforeRender()
+          } catch (err) {
+            const error = err instanceof Error ? err : new Error(String(err))
+            state.criticalError = error
+            state.errorTime = Date.now()
+            console.error(`[tui] Error in ${plugin.name} beforeRender:`, err)
+          }
         }
       }
 
-      // Check if resize happened during beforeRender
-      if (resizeGeneration !== currentGeneration) {
+      // Check resize again after beforeRender hooks
+      if (resizeGeneration !== currentGeneration || state.buffer !== renderBuffer) {
         state.dirty = true
         return
       }
 
-      // Call plugin render hooks
+      // Call plugin render hooks with error boundary
+      let renderError: Error | null = null
       for (const plugin of state.plugins) {
         if (plugin.render) {
-          plugin.render(state.root)
+          try {
+            plugin.render(state.root)
+          } catch (err) {
+            renderError = err instanceof Error ? err : new Error(String(err))
+            state.criticalError = renderError
+            state.errorTime = Date.now()
+            console.error(`[tui] Error in ${plugin.name} render:`, err)
+          }
         }
       }
 
-      // Check if resize happened during render
+      // Display critical error on buffer (persisted until cleared)
+      if (state.criticalError && renderBuffer) {
+        try {
+          const errorTitle = '╔ CRITICAL ERROR ═════════════════════════════════════════╗'
+          const errorLine = '║' + ' '.repeat(63) + '║'
+          const errorFooter = '╚═══════════════════════════════════════════════════════════════╝'
+          const errorMsg = `║ ${state.criticalError.message}`
+          const truncatedMsg = errorMsg.slice(0, 63) + ' '.repeat(Math.max(0, 63 - errorMsg.length)) + '║'
+          const errorTime = state.errorTime ? new Date(state.errorTime).toLocaleTimeString() : ''
+
+          // Red error banner at top of screen
+          renderBuffer.write(0, 0, errorTitle, { fg: 0xff0000ff, bg: 0x000000ff, attrs: 0 })
+          renderBuffer.write(0, 1, errorLine, { fg: 0xff0000ff, bg: 0x000000ff, attrs: 0 })
+          renderBuffer.write(0, 2, truncatedMsg, { fg: 0xff0000ff, bg: 0x000000ff, attrs: 0 })
+          renderBuffer.write(0, 3, errorLine, { fg: 0xff0000ff, bg: 0x000000ff, attrs: 0 })
+          renderBuffer.write(0, 4, errorFooter, { fg: 0xff0000ff, bg: 0x000000ff, attrs: 0 })
+
+          // Timestamp in yellow
+          const timeLine = `Time: ${errorTime} | Press Ctrl+C to quit`
+          renderBuffer.write(0, 5, timeLine.padEnd(64), { fg: 0xffff00ff, bg: 0x000000ff, attrs: 0 })
+        } catch {
+          // If even writing error fails, just log to console
+          console.error('[tui] Failed to display critical error:', state.criticalError)
+        }
+      }
+
+      // Final check for resize during render
       if (resizeGeneration !== currentGeneration) {
         state.dirty = true
         return
       }
 
-      // Call plugin afterRender hooks
+      // Call plugin afterRender hooks with error boundary
       for (const plugin of state.plugins) {
         if (plugin.afterRender) {
-          plugin.afterRender()
+          try {
+            plugin.afterRender()
+          } catch (err) {
+            const error = err instanceof Error ? err : new Error(String(err))
+            state.criticalError = error
+            state.errorTime = Date.now()
+            console.error(`[tui] Error in ${plugin.name} afterRender:`, err)
+          }
         }
       }
 
       emit('render')
     } finally {
       isRendering = false
+      // Clear disposal in progress flag
+      state.disposalInProgress = false
+
+      // Execute pending disposal if any
+      if (state.pendingDisposal) {
+        const pending = state.pendingDisposal
+        state.pendingDisposal = null
+        try {
+          pending()
+        } catch (error) {
+          console.error('[tui] Error executing pending disposal:', error)
+        }
+      }
+
+      // If resize happened during render, schedule another render
+      if (resizeGeneration !== currentGeneration) {
+        state.dirty = true
+      }
     }
   }
 
@@ -238,6 +463,22 @@ export function tui(options: TUIOptions = {}): TUIApp {
 
       emit('resize', state.width, state.height)
       scheduleRender()
+    }
+  }
+
+  /**
+   * Safely execute a disposal operation.
+   * If render is in progress, the disposal is queued until after render completes.
+   *
+   * @param disposalFn - Function that performs the disposal
+   */
+  function safeDispose(disposalFn: () => void): void {
+    if (state.disposalInProgress) {
+      // Queue disposal for after render completes
+      state.pendingDisposal = disposalFn
+    } else {
+      // Execute immediately
+      disposalFn()
     }
   }
 
@@ -296,8 +537,11 @@ export function tui(options: TUIOptions = {}): TUIApp {
 
       state.running = true
 
-      // Install plugins
-      for (const plugin of plugins) {
+      // Resolve plugin load order based on dependencies
+      const resolvedPlugins = resolvePluginOrder(plugins)
+
+      // Install plugins in resolved order
+      for (const plugin of resolvedPlugins) {
         try {
           plugin.install(app)
           state.plugins.push(plugin)
@@ -377,6 +621,14 @@ export function tui(options: TUIOptions = {}): TUIApp {
       state.plugins = []
 
       emit('quit')
+
+      // Clear error state
+      state.criticalError = null
+      state.errorTime = null
+
+      // Clear all event listeners to prevent memory leaks
+      state.listeners.clear()
+      state.quitHandlers.clear()
     },
 
     refresh(): TUIApp {
@@ -387,6 +639,49 @@ export function tui(options: TUIOptions = {}): TUIApp {
 
     markDirty(): void {
       scheduleRender()
+    },
+
+    /**
+     * Clear the critical error state.
+     * Call this after handling or recovering from an error.
+     */
+    clearError(): TUIApp {
+      state.criticalError = null
+      state.errorTime = null
+      state.dirty = true
+      scheduleRender()
+      return app
+    },
+
+    /**
+     * Get the current critical error if any.
+     */
+    getError(): Error | null {
+      return state.criticalError
+    },
+
+    /**
+     * Safely dispose the root node.
+     * If render is in progress, disposal is queued until after render completes.
+     *
+     * @returns This app for method chaining
+     */
+    disposeRoot(): TUIApp {
+      safeDispose(() => {
+        if (state.root && state.root instanceof BaseNode) {
+          try {
+            state.root.dispose()
+          } catch (error) {
+            console.error('[tui] Error disposing root node:', error)
+            state.criticalError = error instanceof Error ? error : new Error(String(error))
+            state.errorTime = Date.now()
+          }
+          state.root = null
+          state.focusedNode = null
+          state.dirty = true
+        }
+      })
+      return app
     },
 
     // Events

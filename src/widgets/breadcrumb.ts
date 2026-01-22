@@ -259,7 +259,7 @@ class BreadcrumbNodeImpl extends LeafNode implements BreadcrumbNode {
   }
 
   // Focus
-  focus(): this {
+  override focus(): this {
     this._isFocused = true
     if (this._focusedIndex < 0 && this._items.length > 0) {
       this._focusedIndex = this._items.length - 1
@@ -268,7 +268,7 @@ class BreadcrumbNodeImpl extends LeafNode implements BreadcrumbNode {
     return this
   }
 
-  blur(): this {
+  override blur(): this {
     this._isFocused = false
     this._focusedIndex = -1
     this.markDirty()

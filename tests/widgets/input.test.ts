@@ -786,17 +786,17 @@ describe('Input Widget', () => {
     it('should handle NaN maxLength', () => {
       const i = input().maxLength(NaN)
       expect(i.currentValue).toBe('')
-      // NaN becomes 0 after validation
+      // NaN becomes Infinity (unlimited) after validation
       i.value('Hello')
-      expect(i.currentValue).toBe('')
+      expect(i.currentValue).toBe('Hello') // No limit, value preserved
     })
 
     it('should handle negative maxLength', () => {
       const i = input().maxLength(-5)
-      // Negative becomes 0 after validation
+      // Negative becomes Infinity (unlimited) after validation
       expect(i.currentValue).toBe('')
       i.value('Hello')
-      expect(i.currentValue).toBe('')
+      expect(i.currentValue).toBe('Hello') // No limit, value preserved
     })
 
     it('should handle maxLength with decimal value', () => {
@@ -807,11 +807,9 @@ describe('Input Widget', () => {
 
     it('should handle infinite maxLength', () => {
       const i = input().maxLength(Infinity)
-      // Infinity validation treats it as 0 (since !isFinite(Infinity) is false,
-      // but the isFinite check actually returns false for Infinity, making validatedLength = 0)
-      // So the actual behavior is that Infinity becomes 0 limit
+      // Infinity becomes Infinity (unlimited) after validation
       i.value('A'.repeat(1000))
-      expect(i.currentValue).toBe('') // Infinity is treated as 0 limit in current implementation
+      expect(i.currentValue).toBe('A'.repeat(1000)) // No limit, value preserved
     })
   })
 

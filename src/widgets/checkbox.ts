@@ -72,8 +72,8 @@ class CheckboxNodeImpl extends LeafNode implements CheckboxNode {
   private _focused: boolean = false
 
   private _onChangeHandlers: ((checked: boolean) => void)[] = []
-  private _onFocusHandlers: (() => void)[] = []
-  private _onBlurHandlers: (() => void)[] = []
+  override _onFocusHandlers: (() => void)[] = []
+  override _onBlurHandlers: (() => void)[] = []
 
   constructor(props?: CheckboxProps) {
     super()
@@ -133,12 +133,12 @@ class CheckboxNodeImpl extends LeafNode implements CheckboxNode {
     return this
   }
 
-  onFocus(handler: () => void): this {
+  override onFocus(handler: () => void): this {
     this._onFocusHandlers.push(handler)
     return this
   }
 
-  onBlur(handler: () => void): this {
+  override onBlur(handler: () => void): this {
     this._onBlurHandlers.push(handler)
     return this
   }
@@ -176,7 +176,7 @@ class CheckboxNodeImpl extends LeafNode implements CheckboxNode {
   }
 
   // Focus control
-  focus(): this {
+  override focus(): this {
     if (!this._disabled && !this._focused) {
       this._focused = true
       this.markDirty()
@@ -187,7 +187,7 @@ class CheckboxNodeImpl extends LeafNode implements CheckboxNode {
     return this
   }
 
-  blur(): this {
+  override blur(): this {
     if (this._focused) {
       this._focused = false
       this.markDirty()
