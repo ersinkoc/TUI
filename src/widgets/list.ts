@@ -142,6 +142,9 @@ class ListNodeImpl<T = unknown> extends LeafNode implements ListNode<T> {
   }
 
   get selectedItem(): ListItem<T> | undefined {
+    if (this._selectedIndex < 0 || this._selectedIndex >= this._items.length) {
+      return undefined
+    }
     return this._items[this._selectedIndex]
   }
 
@@ -171,11 +174,28 @@ class ListNodeImpl<T = unknown> extends LeafNode implements ListNode<T> {
 
   // Configuration
   items(data: ListItem<T>[]): this {
-    this._items = data
-    // Reset selection if out of bounds
-    if (this._selectedIndex >= data.length) {
-      this._selectedIndex = Math.max(0, data.length - 1)
+    // Validate unique IDs - warn on duplicates (could cause selection bugs)
+    const seenIds = new Set<string>()
+    for (const item of data) {
+      if (seenIds.has(item.id)) {
+        console.warn(
+          `[list] Duplicate item ID detected: "${item.id}". ` +
+          `IDs must be unique for proper selection behavior.`
+        )
+      }
+      seenIds.add(item.id)
     }
+
+    this._items = data
+
+    // Reset selection if out of bounds or empty
+    if (data.length === 0) {
+      this._selectedIndex = -1
+      this._scrollOffset = 0
+    } else if (this._selectedIndex >= data.length || this._selectedIndex < 0) {
+      this._selectedIndex = 0
+    }
+
     // Clear invalid selections
     const validIds = new Set(data.map(item => item.id))
     for (const id of this._selectedIds) {

@@ -200,22 +200,28 @@ export function parseRgbColor(rgb: string): number | null {
   let a = 255
 
   if (rgbMatch[4] !== undefined) {
-    const alpha = parseFloat(rgbMatch[4]!)
+    const alphaStr = rgbMatch[4]!
+    const alpha = parseFloat(alphaStr)
 
     if (isNaN(alpha)) {
       return null
     }
 
     // Disambiguate alpha format:
-    // - If alpha < 1: treated as decimal (0-1 range), e.g., 0.5 = 50% opacity
-    // - If alpha >= 1 and <= 255: treated as direct value (0-255 range)
-    // - Values > 255: treated as direct but will be clamped
-    if (alpha < 1) {
-      // Decimal format: alpha is 0-1
+    // - If string contains decimal point AND value <= 1: decimal format (0.0-1.0)
+    // - Otherwise: direct format (0-255)
+    // This correctly handles: 1.0 -> 255, 1 -> 1, 0.5 -> 128
+    const hasDecimalPoint = alphaStr.includes('.')
+
+    if (hasDecimalPoint && alpha <= 1) {
+      // Decimal format: 0.0-1.0 -> 0-255
       a = Math.round(alpha * 255)
-    } else {
-      // Direct format: alpha is 0-255
+    } else if (alpha <= 255) {
+      // Direct format: 0-255
       a = Math.round(alpha)
+    } else {
+      // Values > 255 are clamped
+      a = 255
     }
   }
 
@@ -231,6 +237,28 @@ export function parseRgbColor(rgb: string): number | null {
   const clampedA = Math.max(0, Math.min(255, a))
 
   return packColor(clampedR, clampedG, clampedB, clampedA)
+}
+
+/**
+ * Maximum color string length to prevent ReDoS attacks.
+ * @internal
+ */
+const MAX_COLOR_STRING_LENGTH = 64
+
+/**
+ * Safely check if a key exists in NAMED_COLORS without prototype pollution.
+ * Prevents attacks using '__proto__', 'constructor', etc.
+ * @internal
+ */
+function getNamedColor(name: string): number | undefined {
+  // Reject prototype pollution attempts
+  if (name === '__proto__' || name === 'constructor' || name === 'prototype') {
+    return undefined
+  }
+  if (!Object.prototype.hasOwnProperty.call(NAMED_COLORS, name)) {
+    return undefined
+  }
+  return NAMED_COLORS[name]
 }
 
 /**
@@ -252,11 +280,17 @@ export function parseColor(value: string): number | null {
     return null
   }
 
+  // ReDoS prevention: reject overly long strings
+  if (value.length > MAX_COLOR_STRING_LENGTH) {
+    return null
+  }
+
   const trimmed = value.trim().toLowerCase()
 
-  // Check named colors first
-  if (trimmed in NAMED_COLORS) {
-    return NAMED_COLORS[trimmed]!
+  // Check named colors first (with prototype pollution protection)
+  const namedColor = getNamedColor(trimmed)
+  if (namedColor !== undefined) {
+    return namedColor
   }
 
   // Try hex format

@@ -1113,4 +1113,88 @@ describe('List Widget', () => {
       expect(result).toBe(false)
     })
   })
+
+  // ============================================================
+  // Edge Cases and Data Integrity Tests
+  // ============================================================
+
+  describe('empty items handling', () => {
+    it('should set selectedIndex to -1 when items are empty', () => {
+      const l = list().items([])
+      expect(l.selectedIndex).toBe(-1)
+    })
+
+    it('should return undefined for selectedItem when items are empty', () => {
+      const l = list().items([])
+      expect(l.selectedItem).toBe(undefined)
+    })
+
+    it('should reset scrollOffset when items become empty', () => {
+      const l = list()
+        .items([{ id: '1', label: 'A' }, { id: '2', label: 'B' }])
+        .selectIndex(1)
+      ;(l as any)._scrollOffset = 5
+
+      l.items([])
+
+      expect((l as any)._scrollOffset).toBe(0)
+    })
+
+    it('should handle transitioning from empty to non-empty', () => {
+      const l = list().items([])
+      expect(l.selectedIndex).toBe(-1)
+
+      l.items([{ id: '1', label: 'A' }])
+      expect(l.selectedIndex).toBe(0)
+      expect(l.selectedItem?.label).toBe('A')
+    })
+  })
+
+  describe('duplicate ID handling', () => {
+    it('should warn but not throw on duplicate IDs', () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const l = list().items([
+        { id: '1', label: 'A' },
+        { id: '1', label: 'B' }, // Duplicate
+        { id: '2', label: 'C' }
+      ])
+
+      expect(warnSpy).toHaveBeenCalled()
+      expect(warnSpy.mock.calls[0][0]).toContain('Duplicate item ID')
+      expect(l.itemCount).toBe(3) // Still creates all items
+
+      warnSpy.mockRestore()
+    })
+
+    it('should not warn when all IDs are unique', () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      list().items([
+        { id: '1', label: 'A' },
+        { id: '2', label: 'B' },
+        { id: '3', label: 'C' }
+      ])
+
+      expect(warnSpy).not.toHaveBeenCalled()
+
+      warnSpy.mockRestore()
+    })
+  })
+
+  describe('selectedItem bounds checking', () => {
+    it('should return undefined when selectedIndex is negative', () => {
+      const l = list().items([{ id: '1', label: 'A' }])
+      ;(l as any)._selectedIndex = -1
+
+      expect(l.selectedItem).toBe(undefined)
+    })
+
+    it('should return undefined when selectedIndex exceeds items length', () => {
+      const l = list().items([{ id: '1', label: 'A' }])
+      ;(l as any)._selectedIndex = 10
+
+      expect(l.selectedItem).toBe(undefined)
+    })
+  })
 })

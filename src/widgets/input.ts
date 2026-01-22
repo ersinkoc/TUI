@@ -153,7 +153,9 @@ class InputNodeImpl extends LeafNode implements InputNode {
   }
 
   value(value: string): this {
-    const newValue = value.slice(0, this._maxLength)
+    // Sanitize input to prevent injection attacks (same as handleKey)
+    const sanitized = this.sanitizeInputKey(value)
+    const newValue = sanitized.slice(0, this._maxLength)
     if (this._value !== newValue) {
       this._value = newValue
       this.updateGraphemes()

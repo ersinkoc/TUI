@@ -1066,4 +1066,69 @@ describe('Node System', () => {
       expect(bounds1).toEqual(bounds2)
     })
   })
+
+  // ============================================================
+  // Circular Reference Prevention Tests
+  // ============================================================
+
+  describe('self-reference prevention', () => {
+    it('should throw when adding node to itself', () => {
+      const node = new MockContainerNode()
+
+      expect(() => node.add(node)).toThrow('Cannot add node to itself')
+    })
+
+    it('should include node ID in error message', () => {
+      const node = new MockContainerNode()
+
+      expect(() => node.add(node)).toThrow(node.id)
+    })
+  })
+
+  describe('circular reference prevention', () => {
+    it('should throw when adding ancestor as child', () => {
+      const grandparent = new MockContainerNode()
+      const parent = new MockContainerNode()
+      const child = new MockContainerNode()
+
+      grandparent.add(parent)
+      parent.add(child)
+
+      // Try to add grandparent as child of child
+      expect(() => child.add(grandparent)).toThrow('Circular reference')
+    })
+
+    it('should throw when adding parent as child', () => {
+      const parent = new MockContainerNode()
+      const child = new MockContainerNode()
+
+      parent.add(child)
+
+      // Try to add parent as child of child
+      expect(() => child.add(parent)).toThrow('Circular reference')
+    })
+
+    it('should allow adding siblings', () => {
+      const parent = new MockContainerNode()
+      const child1 = new MockContainerNode()
+      const child2 = new MockContainerNode()
+
+      parent.add(child1)
+      parent.add(child2)
+
+      // Adding child2 as child of child1 should be fine (they are siblings, not ancestors)
+      expect(() => child1.add(child2)).not.toThrow()
+    })
+
+    it('should allow adding unrelated nodes', () => {
+      const tree1Root = new MockContainerNode()
+      const tree1Child = new MockContainerNode()
+      const tree2Root = new MockContainerNode()
+
+      tree1Root.add(tree1Child)
+
+      // Adding node from different tree should be fine
+      expect(() => tree1Child.add(tree2Root)).not.toThrow()
+    })
+  })
 })

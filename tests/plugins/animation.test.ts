@@ -860,4 +860,139 @@ describe('animationPlugin', () => {
       expect(() => plugin.destroy!()).not.toThrow()
     })
   })
+
+  // ============================================================
+  // Invalid Duration Handling Tests
+  // ============================================================
+
+  describe('tween duration validation', () => {
+    it('should complete immediately with negative duration', () => {
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const plugin = animationPlugin({ debug: true })
+      const app = createMockApp()
+
+      plugin.install!(app)
+
+      const onUpdate = vi.fn()
+      const onComplete = vi.fn()
+      const handle = (app as any).animation.tween({
+        from: 0,
+        to: 100,
+        duration: -100,
+        onUpdate,
+        onComplete
+      })
+
+      // Should complete immediately with final value
+      expect(onUpdate).toHaveBeenCalledWith(100)
+      expect(onComplete).toHaveBeenCalled()
+      expect(handle.isRunning()).toBe(false)
+
+      consoleSpy.mockRestore()
+    })
+
+    it('should complete immediately with zero duration', () => {
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const plugin = animationPlugin({ debug: true })
+      const app = createMockApp()
+
+      plugin.install!(app)
+
+      const onUpdate = vi.fn()
+      const onComplete = vi.fn()
+      const handle = (app as any).animation.tween({
+        from: 0,
+        to: 50,
+        duration: 0,
+        onUpdate,
+        onComplete
+      })
+
+      // Should complete immediately with final value
+      expect(onUpdate).toHaveBeenCalledWith(50)
+      expect(onComplete).toHaveBeenCalled()
+      expect(handle.isRunning()).toBe(false)
+
+      consoleSpy.mockRestore()
+    })
+
+    it('should complete immediately with NaN duration', () => {
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const plugin = animationPlugin({ debug: true })
+      const app = createMockApp()
+
+      plugin.install!(app)
+
+      const onUpdate = vi.fn()
+      const handle = (app as any).animation.tween({
+        from: 0,
+        to: 100,
+        duration: NaN,
+        onUpdate
+      })
+
+      expect(onUpdate).toHaveBeenCalledWith(100)
+      expect(handle.isRunning()).toBe(false)
+
+      consoleSpy.mockRestore()
+    })
+
+    it('should complete immediately with Infinity duration', () => {
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const plugin = animationPlugin({ debug: true })
+      const app = createMockApp()
+
+      plugin.install!(app)
+
+      const onUpdate = vi.fn()
+      const handle = (app as any).animation.tween({
+        from: 0,
+        to: 100,
+        duration: Infinity,
+        onUpdate
+      })
+
+      expect(onUpdate).toHaveBeenCalledWith(100)
+      expect(handle.isRunning()).toBe(false)
+
+      consoleSpy.mockRestore()
+    })
+
+    it('should warn in debug mode for invalid duration', () => {
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const plugin = animationPlugin({ debug: true })
+      const app = createMockApp()
+
+      plugin.install!(app)
+
+      ;(app as any).animation.tween({
+        from: 0,
+        to: 100,
+        duration: -1,
+        onUpdate: () => {}
+      })
+
+      expect(consoleSpy).toHaveBeenCalled()
+      expect(consoleSpy.mock.calls[0][0]).toContain('Invalid tween duration')
+
+      consoleSpy.mockRestore()
+    })
+
+    it('should return no-op handle for invalid duration', () => {
+      const plugin = animationPlugin()
+      const app = createMockApp()
+
+      plugin.install!(app)
+
+      const handle = (app as any).animation.tween({
+        from: 0,
+        to: 100,
+        duration: -1,
+        onUpdate: () => {}
+      })
+
+      // cancel() should not throw
+      expect(() => handle.cancel()).not.toThrow()
+    })
+  })
 })

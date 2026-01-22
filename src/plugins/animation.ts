@@ -330,6 +330,26 @@ export function animationPlugin(options: AnimationPluginOptions = {}): Plugin {
         tween: (tweenOptions: TweenOptions) => {
           const { from, to, duration, easing = easings.linear, onUpdate, onComplete } = tweenOptions
 
+          // Validate duration - must be positive finite number
+          if (!Number.isFinite(duration) || duration <= 0) {
+            // Invalid duration - complete immediately with final value
+            if (debug) {
+              console.warn(
+                `[animation] Invalid tween duration: ${duration}. ` +
+                `Duration must be a positive number. Completing immediately.`
+              )
+            }
+            onUpdate(to)
+            if (onComplete) {
+              onComplete()
+            }
+            // Return no-op handle
+            return {
+              cancel: () => {},
+              isRunning: () => false
+            }
+          }
+
           const tweenStart = performance.now()
           let cancelled = false
 

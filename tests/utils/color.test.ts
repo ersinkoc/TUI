@@ -593,4 +593,84 @@ describe('Color Utilities', () => {
       expect(b).toBe(0)
     })
   })
+
+  // ============================================================
+  // Security Tests
+  // ============================================================
+
+  describe('security', () => {
+    describe('prototype pollution prevention', () => {
+      it('should not return value for __proto__', () => {
+        expect(parseColor('__proto__')).toBe(null)
+      })
+
+      it('should not return value for constructor', () => {
+        expect(parseColor('constructor')).toBe(null)
+      })
+
+      it('should not return value for prototype', () => {
+        expect(parseColor('prototype')).toBe(null)
+      })
+
+      it('should still work for valid named colors', () => {
+        expect(parseColor('red')).not.toBe(null)
+        expect(parseColor('blue')).not.toBe(null)
+        expect(parseColor('transparent')).not.toBe(null)
+      })
+    })
+
+    describe('ReDoS prevention', () => {
+      it('should reject extremely long color strings', () => {
+        const longString = 'a'.repeat(1000)
+        expect(parseColor(longString)).toBe(null)
+      })
+
+      it('should reject long hex strings', () => {
+        const longHex = '#' + 'f'.repeat(500)
+        expect(parseColor(longHex)).toBe(null)
+      })
+
+      it('should accept normal length strings', () => {
+        expect(parseColor('#ff0000')).not.toBe(null)
+        expect(parseColor('rgb(255, 0, 0)')).not.toBe(null)
+      })
+    })
+
+    describe('alpha disambiguation', () => {
+      it('should treat 1.0 as full opacity (255)', () => {
+        const color = parseRgbColor('rgba(255, 0, 0, 1.0)')
+        expect(color).not.toBe(null)
+        const [, , , a] = unpackColor(color!)
+        expect(a).toBe(255)
+      })
+
+      it('should treat 0.5 as half opacity (128)', () => {
+        const color = parseRgbColor('rgba(255, 0, 0, 0.5)')
+        expect(color).not.toBe(null)
+        const [, , , a] = unpackColor(color!)
+        expect(a).toBe(128)
+      })
+
+      it('should treat integer 1 as direct value (1)', () => {
+        const color = parseRgbColor('rgba(255, 0, 0, 1)')
+        expect(color).not.toBe(null)
+        const [, , , a] = unpackColor(color!)
+        expect(a).toBe(1)
+      })
+
+      it('should treat 255 as full opacity', () => {
+        const color = parseRgbColor('rgba(255, 0, 0, 255)')
+        expect(color).not.toBe(null)
+        const [, , , a] = unpackColor(color!)
+        expect(a).toBe(255)
+      })
+
+      it('should treat 0.0 as transparent', () => {
+        const color = parseRgbColor('rgba(255, 0, 0, 0.0)')
+        expect(color).not.toBe(null)
+        const [, , , a] = unpackColor(color!)
+        expect(a).toBe(0)
+      })
+    })
+  })
 })

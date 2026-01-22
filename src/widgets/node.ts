@@ -16,19 +16,32 @@ let idCounter = 0
 
 // Session ID: unique identifier for this process instance
 // Prevents ID collisions across multiple processes or rapid restarts
-// Generated once per process using high-resolution time + random component
+// Generated once per process using crypto (when available) + high-resolution time
 const SESSION_ID = (() => {
-  // Use high-resolution time if available (Node.js)
+  // Try to use crypto for better randomness (Node.js)
+  try {
+    // Dynamic require to avoid bundling issues in browser
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const crypto = require('crypto')
+    if (crypto && typeof crypto.randomBytes === 'function') {
+      return crypto.randomBytes(6).toString('hex')
+    }
+  } catch {
+    // crypto not available, fall back to hrtime + random
+  }
+
+  // Fallback: Use high-resolution time if available (Node.js)
   let hrTime: [number, number]
   if (typeof process !== 'undefined' && typeof process.hrtime === 'function') {
     hrTime = process.hrtime()
   } else {
     hrTime = [Date.now(), Math.floor(Math.random() * 1000000)]
   }
-  // Combine nanosecond precision with random for uniqueness
+  // Combine nanosecond precision with multiple random values for better uniqueness
   const timePart = ((hrTime[0] * 1000000 + hrTime[1]) % 0xffffff).toString(36)
-  const randomPart = Math.floor(Math.random() * 0xffff).toString(36)
-  return `${timePart}${randomPart}`
+  const randomPart1 = Math.floor(Math.random() * 0xffffff).toString(36)
+  const randomPart2 = Math.floor(Math.random() * 0xffff).toString(36)
+  return `${timePart}${randomPart1}${randomPart2}`
 })()
 
 // NOTE: Global _nodeIndex removed to prevent memory leaks.
@@ -373,12 +386,37 @@ export abstract class ContainerNode extends BaseNode {
    * @param child - Child to add
    * @throws {DisposedNodeError} If child is already disposed
    * @throws {NodeMaxChildrenError} If maximum children limit reached
+   * @throws {Error} If attempting to add node to itself or create circular reference
    */
   add(child: Node): this {
     if (child instanceof BaseNode) {
       if (child._disposed) {
         throw new DisposedNodeError(child.id, 'add')
       }
+
+      // Prevent self-reference (adding node to itself)
+      if (child === this) {
+        throw new Error(
+          `[node] Cannot add node to itself. Node ID: ${this.id}. ` +
+          `This would create an infinite loop during traversal.`
+        )
+      }
+
+      // Prevent circular reference (child is an ancestor of this node)
+      let parent: BaseNode | null = this._parent
+      let depth = 0
+      while (parent) {
+        if (depth++ > TREE_MAX_DEPTH) break // Safety limit
+        if (parent === child) {
+          throw new Error(
+            `[node] Circular reference detected. Cannot add ancestor as child. ` +
+            `Parent ID: ${this.id}, Child ID: ${child.id}. ` +
+            `This would create an infinite loop during traversal.`
+          )
+        }
+        parent = parent._parent
+      }
+
       // Prevent unbounded children
       if (this._children.length >= MAX_CHILDREN_PER_NODE) {
         throw new NodeMaxChildrenError(this.id)
