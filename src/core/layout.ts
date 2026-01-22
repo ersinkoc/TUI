@@ -75,7 +75,18 @@ export function createLayoutEngine(): LayoutEngine {
 function layoutChildren(node: Node, depth: number): void {
   // Prevent stack overflow from deeply nested or circular structures
   if (depth >= LAYOUT_MAX_DEPTH) {
-    console.warn(`[layout] Maximum recursion depth (${LAYOUT_MAX_DEPTH}) exceeded, skipping children`)
+    console.error(
+      `[layout] Maximum recursion depth (${LAYOUT_MAX_DEPTH}) exceeded! ` +
+      `This indicates either extremely deep nesting (200+ levels) or a circular reference. ` +
+      `Node: ${node.id}, Type: ${node.type}. ` +
+      `Children will not be laid out.`
+    )
+    // Set all children to have zero bounds to prevent render errors
+    for (const child of node.children) {
+      if (child.isVisible) {
+        setBounds(child, { x: 0, y: 0, width: 0, height: 0 })
+      }
+    }
     return
   }
   const layout = getLayoutProps(node)
@@ -289,6 +300,10 @@ export function resolveDimension(dim: Dimension | undefined, available: number):
   if (typeof dim === 'number') {
     // Validate and clamp numeric dimension
     if (!isFinite(dim)) {
+      console.warn(
+        `[layout] Invalid numeric dimension specified: ${dim}. ` +
+        `Dimensions must be finite numbers. Using available space.`
+      )
       return available
     }
     return Math.max(0, Math.floor(dim))
@@ -300,11 +315,28 @@ export function resolveDimension(dim: Dimension | undefined, available: number):
 
   // Validate parsed percentage
   if (!isFinite(percent) || isNaN(percent)) {
+    console.warn(
+      `[layout] Invalid percentage dimension specified: "${dim}". ` +
+      `Could not parse as percentage. Using available space.`
+    )
     return available
   }
 
-  // Clamp percentage to reasonable bounds (0% to 1000%)
-  const clampedPercent = Math.max(0, Math.min(1000, percent))
+  // Clamp percentage to valid range (0% to 100%)
+  // Values >100% typically indicate a layout error and could cause overflow
+  if (percent > 100) {
+    console.warn(
+      `[layout] Percentage >100% specified (${percent}%). ` +
+      `This may indicate a layout error. Clamping to 100%.`
+    )
+  }
+  if (percent < 0) {
+    console.warn(
+      `[layout] Negative percentage specified (${percent}%). ` +
+      `This is not valid. Using 0% instead.`
+    )
+  }
+  const clampedPercent = Math.max(0, Math.min(100, percent))
   return Math.floor((available * clampedPercent) / 100)
 }
 
@@ -512,6 +544,10 @@ function setBounds(node: Node, bounds: Bounds): void {
 export function measureContent(node: Node, depth: number = 0): { width: number; height: number } {
   // Prevent stack overflow from deeply nested or circular structures
   if (depth >= LAYOUT_MAX_DEPTH) {
+    console.warn(
+      `[layout] measureContent exceeded maximum depth (${LAYOUT_MAX_DEPTH}). ` +
+      `Node: ${node.id}, Type: ${node.type}. This may indicate a circular reference.`
+    )
     return { width: 0, height: 0 }
   }
 

@@ -78,10 +78,17 @@ export function createBuffer(width: number, height: number): Buffer {
       if (!Number.isFinite(x)) {
         return
       }
-      // Clamp x to valid range: [0, w - 1]
-      // For negative values, we allow off-screen writing (col will be adjusted in loop)
-      // For very large positive values, clamp to prevent integer overflow issues
-      const clampedX = x < -0x1000 ? -0x1000 : (x >= w ? w : x)
+      // Clamp x to prevent excessive iterations in the loop
+      // For negative values: clamp to -buffer_width (any further off-screen is useless)
+      // For positive values: clamp to buffer_width (will be handled by loop's bounds check)
+      const maxNegativeOffset = -w - 100  // Allow some off-screen but prevent huge negative values
+      const clampedX = Math.max(maxNegativeOffset, Math.min(x, w))
+
+      // Safety: if clamped position would require more than 10000 iterations to reach screen,
+      // just skip entirely (prevent DoS via extreme negative positions)
+      if (clampedX < -10000) {
+        return
+      }
 
       // Sanitize input to prevent ANSI injection attacks
       text = sanitizeAnsi(text)
@@ -157,9 +164,10 @@ export function createBuffer(width: number, height: number): Buffer {
         // Extract base characters from grapheme, skipping combining marks
         // This ensures 'a\u0300' (a + combining grave) writes as just 'a'
         let charsToWrite = grapheme
-
-        // Check if grapheme contains combining marks
+        const baseChars: string[] = []
         let hasCombiningMark = false
+
+        // Single loop: check for combining marks AND collect base chars
         for (const ch of grapheme) {
           const code = ch.codePointAt(0) ?? 0
           const isCombining =
@@ -171,26 +179,12 @@ export function createBuffer(width: number, height: number): Buffer {
 
           if (isCombining) {
             hasCombiningMark = true
-            break
+          } else {
+            baseChars.push(ch)
           }
         }
 
         if (hasCombiningMark) {
-          // Extract only base characters by filtering out combining marks
-          const baseChars: string[] = []
-          for (const ch of grapheme) {
-            const code = ch.codePointAt(0) ?? 0
-            const isCombining =
-              (code >= 0x0300 && code <= 0x036f) || // Combining Diacritical Marks
-              (code >= 0x1ab0 && code <= 0x1aff) || // Combining Diacritical Marks Extended
-              (code >= 0x1dc0 && code <= 0x1dff) || // Combining Diacritical Marks Supplement
-              (code >= 0x20d0 && code <= 0x20ff) || // Combining Diacritical Marks for Symbols
-              (code >= 0xfe20 && code <= 0xfe2f) // Combining Half Marks
-
-            if (!isCombining) {
-              baseChars.push(ch)
-            }
-          }
           charsToWrite = baseChars.join('') || grapheme // Fallback to original if empty
         }
 
@@ -324,8 +318,8 @@ export function createBuffer(width: number, height: number): Buffer {
 function clearWideCharacterAt(
   index: number,
   cells: Cell[],
-  _width: number,
-  _y: number,
+  width: number,
+  y: number,
   _height: number,
   defaultFg: number,
   defaultBg: number
@@ -335,49 +329,41 @@ function clearWideCharacterAt(
   const cell = cells[index]
   if (!cell) return
 
-  // Check if this is a continuation cell (empty char)
+  // Check if this is a continuation cell (empty char = right half of wide char)
   if (cell.char === '') {
-    // This is the right half of a wide character
-    // Clear the left half (the actual character)
+    // This is the right half - clear the left half (the actual character)
     if (index > 0) {
       const leftIndex = index - 1
       const leftCell = cells[leftIndex]
-      if (leftCell) {
-        // Check if left cell is also a continuation of another wide char
-        if (leftCell.char === '' && leftIndex > 0) {
-          cells[leftIndex - 1] = {
-            char: ' ',
-            fg: leftCell.fg,
-            bg: leftCell.bg,
-            attrs: 0
-          }
-        }
+      if (leftCell && leftCell.char !== '') {
+        // Found the actual character - clear it
         cells[leftIndex] = { char: ' ', fg: leftCell.fg, bg: leftCell.bg, attrs: 0 }
       }
     }
   } else {
-    // Check if this is the left half of a wide character
-    // Guard against undefined char property
+    // This might be the left half of a wide character
     const char = cell.char ?? ''
     const charWidth = getCharWidth(char)
-    if (charWidth === 2 && index + 1 < cells.length) {
-      // Clear the continuation cell
-      const rightIndex = index + 1
-      const rightCell = cells[rightIndex]
-      if (rightCell && rightCell.char === '') {
-        // Check if the continuation cell is part of another wide char
-        if (rightIndex + 1 < cells.length) {
-          const afterRight = cells[rightIndex + 1]
-          if (afterRight && afterRight.char === '') {
-            cells[rightIndex + 1] = {
-              char: ' ',
-              fg: afterRight.fg,
-              bg: afterRight.bg,
-              attrs: 0
-            }
-          }
+
+    if (charWidth === 2) {
+      // This is a wide character - clear its continuation cell
+      // But first check if we're at a row boundary (wide char spanning rows is invalid)
+      const rowStart = y * width
+      const rowEnd = rowStart + width - 1
+
+      // If continuation would be past row end, just clear current cell
+      if (index >= rowEnd) {
+        cells[index] = { char: ' ', fg: defaultFg, bg: defaultBg, attrs: 0 }
+        return
+      }
+
+      // Safe to clear continuation cell
+      if (index + 1 < cells.length) {
+        const rightIndex = index + 1
+        const rightCell = cells[rightIndex]
+        if (rightCell && rightCell.char === '') {
+          cells[rightIndex] = { char: ' ', fg: defaultFg, bg: defaultBg, attrs: 0 }
         }
-        cells[rightIndex] = { char: ' ', fg: defaultFg, bg: defaultBg, attrs: 0 }
       }
     }
   }

@@ -486,6 +486,11 @@ export abstract class LeafNode extends BaseNode {
 export function findNodeById(root: Node, id: string, depth: number = 0): Node | undefined {
   // Prevent stack overflow from deeply nested or circular structures
   if (depth >= TREE_MAX_DEPTH) {
+    console.warn(
+      `[node] findNodeById exceeded maximum depth (${TREE_MAX_DEPTH}). ` +
+      `This may indicate a circular reference or extremely deep tree. ` +
+      `Searched for ID: ${id}`
+    )
     return undefined
   }
 
@@ -514,6 +519,11 @@ export function findNodeById(root: Node, id: string, depth: number = 0): Node | 
 export function findNodesByType(root: Node, type: string, depth: number = 0): Node[] {
   // Prevent stack overflow from deeply nested or circular structures
   if (depth >= TREE_MAX_DEPTH) {
+    console.warn(
+      `[node] findNodesByType exceeded maximum depth (${TREE_MAX_DEPTH}). ` +
+      `This may indicate a circular reference or extremely deep tree. ` +
+      `Searched for type: ${type}`
+    )
     return []
   }
 
@@ -540,6 +550,10 @@ export function findNodesByType(root: Node, type: string, depth: number = 0): No
 export function traverseDepthFirst(root: Node, visitor: (node: Node) => void, depth: number = 0): void {
   // Prevent stack overflow from deeply nested or circular structures
   if (depth >= TREE_MAX_DEPTH) {
+    console.warn(
+      `[node] traverseDepthFirst exceeded maximum depth (${TREE_MAX_DEPTH}). ` +
+      `This may indicate a circular reference or extremely deep tree.`
+    )
     return
   }
 
@@ -558,18 +572,54 @@ export function traverseDepthFirst(root: Node, visitor: (node: Node) => void, de
 export function traverseBreadthFirst(root: Node, visitor: (node: Node) => void): void {
   const queue: Node[] = [root]
   let iterations = 0
-  // Use TREE_MAX_DEPTH squared as max iterations (covers max depth * max breadth)
-  const maxIterations = TREE_MAX_DEPTH * TREE_MAX_DEPTH
+
+  // More reasonable limit: prevents infinite loops but allows large trees
+  // 100,000 iterations = ~1000 nodes at depth 100, which is excessive
+  // If you need more, consider using pagination/virtualization
+  const maxIterations = 100000
+
+  // Track visited nodes to prevent infinite loops from circular references
+  // Using Set for O(1) lookup - memory tradeoff for safety
+  const visited = new Set<string>()
 
   while (queue.length > 0) {
     // Prevent infinite loops from circular references or huge trees
     if (iterations++ >= maxIterations) {
+      console.warn(
+        '[node] traverseBreadthFirst exceeded iteration limit (' +
+        maxIterations +
+        '). Tree may have circular references or be extremely large.'
+      )
+      return
+    }
+
+    // Also check queue size to prevent memory exhaustion
+    if (queue.length > 50000) {
+      console.warn(
+        '[node] traverseBreadthFirst queue exceeded 50,000 nodes. ' +
+        'Possible circular reference or extremely wide tree.'
+      )
       return
     }
 
     const node = queue.shift()!
+
+    // Skip if already visited (circular reference protection)
+    if (visited.has(node.id)) {
+      continue
+    }
+
+    // Mark as visited BEFORE calling visitor (prevents duplicate processing)
+    visited.add(node.id)
+
     visitor(node)
-    queue.push(...node.children)
+
+    // Add children to queue (skip already visited)
+    for (const child of node.children) {
+      if (!visited.has(child.id)) {
+        queue.push(child)
+      }
+    }
   }
 }
 
@@ -587,6 +637,10 @@ export function getAncestors(node: Node): Node[] {
   while (current) {
     // Prevent infinite loops from circular parent references
     if (depth++ >= TREE_MAX_DEPTH) {
+      console.warn(
+        `[node] getAncestors exceeded maximum depth (${TREE_MAX_DEPTH}). ` +
+        `This may indicate a circular parent reference.`
+      )
       break
     }
     ancestors.push(current)
@@ -606,6 +660,11 @@ export function getAncestors(node: Node): Node[] {
 export function getDescendants(node: Node, depth: number = 0): Node[] {
   // Prevent stack overflow from deeply nested or circular structures
   if (depth >= TREE_MAX_DEPTH) {
+    console.warn(
+      `[node] getDescendants exceeded maximum depth (${TREE_MAX_DEPTH}). ` +
+      `This may indicate a circular reference or extremely deep tree. ` +
+      `Node: ${node.id}`
+    )
     return []
   }
 
@@ -633,6 +692,10 @@ export function isAncestorOf(ancestor: Node, descendant: Node): boolean {
   while (current) {
     // Prevent infinite loops from circular parent references
     if (depth++ >= TREE_MAX_DEPTH) {
+      console.warn(
+        `[node] isAncestorOf exceeded maximum depth (${TREE_MAX_DEPTH}). ` +
+        `This may indicate a circular parent reference.`
+      )
       return false
     }
     if (current === ancestor) return true
@@ -657,6 +720,10 @@ export function getCommonAncestor(a: Node, b: Node): Node | undefined {
   while (current) {
     // Prevent infinite loops from circular parent references
     if (depth++ >= TREE_MAX_DEPTH) {
+      console.warn(
+        `[node] getCommonAncestor exceeded maximum depth (${TREE_MAX_DEPTH}). ` +
+        `This may indicate a circular parent reference.`
+      )
       return undefined
     }
     if (ancestorsA.has(current)) return current
@@ -681,16 +748,17 @@ export function findNodeAtPosition(root: Node, x: number, y: number, depth: numb
     return undefined
   }
 
-  // Check if point is in bounds
+  // First check if point is in root's bounds
   const bounds = root.bounds
-  if (
-    x < bounds.x ||
-    x >= bounds.x + bounds.width ||
-    y < bounds.y ||
-    y >= bounds.y + bounds.height
-  ) {
-    return undefined
-  }
+  const inBounds =
+    x >= bounds.x &&
+    x < bounds.x + bounds.width &&
+    y >= bounds.y &&
+    y < bounds.y + bounds.height
+
+  // If point is outside root bounds, check children anyway
+  // Children may overflow parent bounds (by design or bug)
+  // and should still be hit-testable
 
   // Check children (last child first for z-order)
   for (let i = root.children.length - 1; i >= 0; i--) {
@@ -701,5 +769,6 @@ export function findNodeAtPosition(root: Node, x: number, y: number, depth: numb
     }
   }
 
-  return root
+  // Only return root if point is actually within its bounds
+  return inBounds ? root : undefined
 }

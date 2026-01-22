@@ -562,6 +562,23 @@ export interface TUIApp {
 
   /** Current theme */
   readonly theme: Theme
+
+  /**
+   * Clear the critical error state.
+   * Call this after handling or recovering from an error.
+   */
+  clearError(): this
+
+  /**
+   * Get the current critical error if any.
+   */
+  getError(): Error | null
+
+  /**
+   * Safely dispose of the root node.
+   * If render is in progress, disposal is queued until after render completes.
+   */
+  disposeRoot(): this
 }
 
 // ============================================================

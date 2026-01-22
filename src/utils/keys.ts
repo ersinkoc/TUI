@@ -17,8 +17,8 @@ import {
 // Key Parser
 // ============================================================
 
-/** Pending buffer timeout in milliseconds (5 seconds) */
-const PENDING_BUFFER_TIMEOUT = 5000
+/** Pending buffer timeout in milliseconds (100ms) */
+const PENDING_BUFFER_TIMEOUT = 100
 
 /**
  * Key parser interface.

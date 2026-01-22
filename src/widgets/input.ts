@@ -316,6 +316,33 @@ class InputNodeImpl extends LeafNode implements InputNode {
   handleKey(key: string, ctrl: boolean): void {
     if (!this._focused) return
 
+    // Validate input to prevent injection and DoS attacks
+    if (typeof key !== 'string') {
+      console.warn('[input] Invalid key type:', typeof key)
+      return
+    }
+
+    // Prevent ANSI escape injection - sanitize like buffer.write does
+    // Only allow printable ASCII and basic UTF-8 characters
+    // Reject escape sequences that could corrupt terminal
+    if (key.length > 100) {
+      // Prevent DoS via extremely long keys
+      console.warn('[input] Key too long, truncating to 100 chars')
+      key = key.slice(0, 100)
+    }
+
+    // Check for escape sequences (potential injection)
+    if (key.includes('\x1b') || key.includes('\x07') || key.includes('\x00')) {
+      console.warn('[input] Rejecting key with control characters')
+      return
+    }
+
+    // Additional safety: reject keys with suspicious patterns
+    if (/[\x00-\x08\x0b-\x0c\x0e-\x1f\x7f]/.test(key)) {
+      console.warn('[input] Rejecting key with unprintable control characters')
+      return
+    }
+
     if (ctrl) {
       // Handle ctrl shortcuts
       switch (key) {
@@ -510,8 +537,17 @@ class InputNodeImpl extends LeafNode implements InputNode {
 
       default:
         // Insert printable character (or grapheme)
-        // Handle paste operations that might exceed maxLength by truncating at grapheme boundaries
+        // Additional safety check for default case - handleKey validation above catches most issues
+        // but this ensures paste operations and multi-character inserts are also safe
         if (key.length >= 1 && this._value.length < this._maxLength) {
+          // Double-check for printable characters only (reject any remaining suspicious content)
+          // Allow: regular text, numbers, basic punctuation, common unicode
+          // Reject: remaining control chars that might have bypassed earlier checks
+          const code = key.codePointAt(0) ?? 0
+          if (code < 32 || (code >= 0x7f && code < 0xa0)) {
+            // Control character - should have been caught earlier, but be defensive
+            break
+          }
           const charIndex = this.graphemeToCharIndex(this._cursorPosition)
 
           // Calculate how many characters we can insert

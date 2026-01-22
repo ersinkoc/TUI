@@ -138,7 +138,7 @@ export function createRenderer(stdout: NodeJS.WriteStream, options: RendererOpti
 
   /**
    * Take a snapshot of the current buffer for next-frame diffing.
-   * Reuses existing cell objects to minimize allocations.
+   * Optimized to minimize GC pressure through object reuse.
    */
   function snapshotBuffer(buffer: Buffer): void {
     const w = buffer.width
@@ -147,6 +147,10 @@ export function createRenderer(stdout: NodeJS.WriteStream, options: RendererOpti
     // Validate dimensions to prevent memory issues
     if (w <= 0 || h <= 0 || w > 10000 || h > 10000) {
       // Invalidate snapshot to prevent using stale data
+      console.warn(
+        `[renderer] Invalid buffer dimensions for snapshot: ${w}x${h}. ` +
+        `Dimensions must be between 1x1 and 10000x10000. Snapshot invalidated.`
+      )
       snapshotCells = null
       snapshotWidth = 0
       snapshotHeight = 0
@@ -156,51 +160,78 @@ export function createRenderer(stdout: NodeJS.WriteStream, options: RendererOpti
     const size = w * h
 
     // Get cells reference immediately after validating dimensions
-    // This minimizes the race condition window
     const cells = buffer.cells
 
     // Triple-check: dimensions, cells length, and snapshot consistency
-    // Only invalidate if we had a previous snapshot (snapshotCells !== null) with different dimensions
-    // First render (snapshotCells === null) should always proceed to create the snapshot
     if (
       cells.length !== size ||
       (snapshotCells !== null && (w !== snapshotWidth || h !== snapshotHeight))
     ) {
-      // Buffer was resized or dimensions changed - invalidate snapshot
-      // This prevents using inconsistent state
-      snapshotCells = null
-      snapshotWidth = 0
-      snapshotHeight = 0
+      // Buffer was resized - recreate snapshot array
+      // But don't set to null - recreate immediately to avoid next-frame lag
+      snapshotCells = new Array(size)
+
+      // Initialize with empty cells (reuse this pattern for V8 optimization)
+      const emptyCell = { char: ' ', fg: 0, bg: 0, attrs: 0 }
+      for (let i = 0; i < size; i++) {
+        snapshotCells[i] = emptyCell  // Same reference for all empty cells
+      }
+      snapshotWidth = w
+      snapshotHeight = h
+
+      // Copy any overlapping content from old snapshot if it existed
+      // This preserves some diffing capability across resize
+      if (cells.length === size) {
+        // Same size, just copy
+        for (let i = 0; i < size; i++) {
+          const src = cells[i]
+          if (src) {
+            // Create new object only for non-empty cells
+            snapshotCells[i] = { char: src.char, fg: src.fg, bg: src.bg, attrs: src.attrs }
+          }
+        }
+      }
       return
     }
 
-    // Reallocate only if dimensions changed or snapshot is null
+    // Reallocate only if snapshot is null (first render)
     if (snapshotCells === null || snapshotCells.length !== size) {
       snapshotCells = new Array(size)
+
+      // Use same empty cell reference for V8 optimization
+      const emptyCell = { char: ' ', fg: 0, bg: 0, attrs: 0 }
       for (let i = 0; i < size; i++) {
-        snapshotCells[i] = { char: ' ', fg: 0, bg: 0, attrs: 0 }
+        snapshotCells[i] = emptyCell
       }
       snapshotWidth = w
       snapshotHeight = h
     }
 
-    // Copy cell data in-place (reuse existing objects)
-    // Bounds checking already done above
+    // Copy cell data in-place, creating new objects only when needed
+    // This minimizes allocations: only create objects for non-empty cells
     for (let i = 0; i < size; i++) {
       const src = cells[i]
-      const dst = snapshotCells[i]!
+
       if (src) {
-        dst.char = src.char
-        dst.fg = src.fg
-        dst.bg = src.bg
-        dst.attrs = src.attrs
-      } else {
-        // Reset to empty if source is null/undefined
-        dst.char = ' '
-        dst.fg = 0
-        dst.bg = 0
-        dst.attrs = 0
+        const dst = snapshotCells[i]
+
+        // Check if we need to create a new object or can update in place
+        // If dst is the shared emptyCell reference, we must create a new object
+        if (dst && dst.char === ' ' && dst.fg === 0 && dst.bg === 0 && dst.attrs === 0 && src.char !== ' ') {
+          // Empty cell, need to create new object for non-empty source
+          snapshotCells[i] = { char: src.char, fg: src.fg, bg: src.bg, attrs: src.attrs }
+        } else if (dst) {
+          // Reuse existing object
+          dst.char = src.char
+          dst.fg = src.fg
+          dst.bg = src.bg
+          dst.attrs = src.attrs
+        } else {
+          // dst is null or undefined, create new object
+          snapshotCells[i] = { char: src.char, fg: src.fg, bg: src.bg, attrs: src.attrs }
+        }
       }
+      // If src is null/undefined, leave dst as is (it's either empty cell or valid content)
     }
   }
 
@@ -377,6 +408,10 @@ export function createBatchedRenderer(stdout: NodeJS.WriteStream, options: Rende
     // Validate dimensions to prevent memory issues
     if (w <= 0 || h <= 0 || w > 10000 || h > 10000) {
       // Invalidate snapshot to prevent using stale data
+      console.warn(
+        `[renderer] Invalid buffer dimensions for snapshot: ${w}x${h}. ` +
+        `Dimensions must be between 1x1 and 10000x10000. Snapshot invalidated.`
+      )
       snapshotCells = null
       snapshotWidth = 0
       snapshotHeight = 0

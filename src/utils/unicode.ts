@@ -441,22 +441,29 @@ export function splitGraphemes(str: string): string[] {
     }
   }
 
-  // If we reach here, Intl.Segmenter is not available
-  // Use a simple fallback that at least doesn't crash, but warn the user
+  // If we reach here, Intl.Segmenter is not available - use fallback
+  // This WILL PRODUCE INCORRECT RESULTS for complex emoji and combining marks
+  // Examples of broken output:
+  //   '👨‍👩‍👧‍👦' → ['👨', '‍', '👩', '‍', '👧', '‍', '👦'] instead of single cluster
+  //   'café' with combining accent → may render incorrectly
   if (typeof Intl === 'undefined' || !('Segmenter' in Intl)) {
     console.warn(
-      '[unicode] Intl.Segmenter not available. ' +
-      'Unicode grapheme handling will be incorrect for complex emoji. ' +
-      'Node.js 16+ is required for full Unicode support. ' +
-      'Falling back to basic character-by-character splitting.'
+      '\n' +
+      '╔════════════════════════════════════════════════════════════════════════╗\n' +
+      '║  WARNING: Intl.Segmenter not available - Unicode support degraded        ║\n' +
+      '╚════════════════════════════════════════════════════════════════════════╝\n' +
+      '\n' +
+      'Complex emoji (family emoji, skin tone modifiers, flags) and combining\n' +
+      'characters will NOT render correctly. Please upgrade to Node.js 16+.\n\n' +
+      'Current Node.js version: ' + process.version + '\n' +
+      'Required: Node.js >= 16.0.0\n\n'
     )
   }
 
-  // Very basic fallback - just split by character
-  // This won't handle emoji correctly but at least won't crash
-  // Users should upgrade to Node.js 16+ for proper Unicode support
+  // Fallback: split by character units (code points, not UTF-16 code units)
+  // This is the best we can do without Intl.Segmenter, but it's WRONG for grapheme clusters
   const chars = Array.from(str)
-  return chars.map(ch => ch)
+  return chars
 }
 
 /**

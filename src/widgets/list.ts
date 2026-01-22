@@ -635,23 +635,40 @@ class ListNodeImpl<T = unknown> extends LeafNode implements ListNode<T> {
     // Draw scrollbar if needed
     // Safety checks: ensure all values are valid before calculations
     const itemCount = this._items.length
-    if (itemCount > 0 && itemCount > height && height > 0 && width > 0) {
-      // Calculate scrollbar height - minimum 1, never exceed available height
-      const scrollbarHeight = Math.max(1, Math.min(height, Math.floor((height / itemCount) * height)))
+    if (itemCount > height && height > 0 && width > 0) {
+      // Calculate scrollbar height using proportional sizing
+      // Thumb height represents the visible portion as a fraction of total content
+      // Minimum thumb height is 1, maximum is the full height
+      const scrollbarHeight = Math.max(
+        1,
+        Math.min(height, Math.ceil((height / itemCount) * height))
+      )
 
-      // Calculate scroll range - items that can be scrolled past
-      const scrollRange = itemCount - height
+      // Calculate scroll range - number of positions the thumb can move
+      // This is (total items - visible items), not (itemCount - height)
+      const scrollRange = Math.max(0, itemCount - height)
 
       // Calculate scrollbar position with all edge cases handled
       let scrollbarPos = 0
-      if (scrollRange > 0) {
-        // Clamp scroll offset to valid range
-        const clampedOffset = Math.max(0, Math.min(this._scrollOffset, scrollRange))
-        // Calculate position, ensuring it stays within bounds
-        const availableTrack = Math.max(0, height - scrollbarHeight)
+      if (scrollRange > 0 && this._scrollOffset >= 0) {
+        // Clamp scroll offset to valid range [0, scrollRange]
+        const clampedOffset = Math.min(this._scrollOffset, scrollRange)
+
+        // Calculate available track for thumb movement
+        // Thumb moves within [0, height - scrollbarHeight]
+        const availableTrack = height - scrollbarHeight
+
+        // Calculate position proportionally
+        // Position = (offset / scrollRange) * availableTrack
         scrollbarPos = Math.floor((clampedOffset / scrollRange) * availableTrack)
-        // Final clamp to ensure we never exceed bounds
+
+        // Final clamp to ensure we never exceed bounds (safety for floating point errors)
         scrollbarPos = Math.max(0, Math.min(scrollbarPos, availableTrack))
+      }
+
+      // Validate: ensure position is a valid number (not NaN)
+      if (!Number.isFinite(scrollbarPos)) {
+        scrollbarPos = 0
       }
 
       // Draw scrollbar track and thumb

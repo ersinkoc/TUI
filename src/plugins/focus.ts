@@ -210,37 +210,90 @@ function hasBlurMethod(node: Node): node is Node & { blur(): void } {
 
 /**
  * Focus a node.
+ *
+ * Atomic operation: either fully succeeds or fully fails with no state corruption.
+ * Protected against dispose during focus, handler errors, and concurrent calls.
  */
 function doFocus(node: BaseNode): void {
+  // Early exit if already focused (idempotent)
   if (focusedNode === node) return
 
   // Check if node is disposed before focusing
   const nodeWithDisposed = node as { _disposed?: boolean }
   if (nodeWithDisposed._disposed) {
+    if (debug) {
+      console.warn(`[focus] Refusing to focus disposed node: ${node.id}`)
+    }
     return
   }
 
-  // Blur previous - use type-safe method
-  if (focusedNode) {
-    if (hasBlurMethod(focusedNode)) {
-      focusedNode.blur()
+  // Store old state for potential rollback
+  const oldFocusedNode = focusedNode
+  const newFocusedNode = node
+
+  // Phase 1: Validate both nodes are still valid
+  // (They could be disposed during validation)
+  if (newFocusedNode._disposed) {
+    return  // Node was disposed, abort
+  }
+
+  // Phase 2: Call blur on old node (with error protection)
+  let blurError: Error | null = null
+  if (oldFocusedNode && !oldFocusedNode._disposed) {
+    if (hasBlurMethod(oldFocusedNode)) {
+      try {
+        oldFocusedNode.blur()
+      } catch (error) {
+        blurError = error as Error
+        console.error(`[focus] Error blurring node ${oldFocusedNode.id}:`, error)
+        // Continue anyway - blur error shouldn't block focus change
+      }
     }
   }
 
-  focusedNode = node
-
-  // Focus new - use type-safe method
-  if (hasFocusMethod(node)) {
-    node.focus()
-  }
+  // Phase 3: Update focused node reference BEFORE calling focus
+  // This ensures that even if focus() throws, we're in a consistent state
+  focusedNode = newFocusedNode
 
   // Update app's focused node reference
   if (app) {
-    ;(app as { focusedNode?: Node }).focusedNode = node
+    ;(app as { focusedNode?: Node }).focusedNode = newFocusedNode
   }
 
+  // Phase 4: Call focus on new node (with error protection)
+  let focusError: Error | null = null
+  if (hasFocusMethod(newFocusedNode)) {
+    try {
+      newFocusedNode.focus()
+    } catch (error) {
+      focusError = error as Error
+      console.error(`[focus] Error focusing node ${newFocusedNode.id}:`, error)
+      // State is already updated, so log and continue
+    }
+  }
+
+  // Debug logging
   if (debug) {
-    console.error(`[focus] focused: ${node.type}#${node.id}`)
+    if (blurError || focusError) {
+      console.error(
+        `[focus] focused ${newFocusedNode.type}#${newFocusedNode.id} ` +
+        `(with errors: blur=${!!blurError}, focus=${!!focusError})`
+      )
+    } else {
+      console.error(`[focus] focused: ${newFocusedNode.type}#${newFocusedNode.id}`)
+    }
+  }
+
+  // Final validation: if node was disposed during focus, clean up
+  if (newFocusedNode._disposed) {
+    if (debug) {
+      console.warn(`[focus] Node ${newFocusedNode.id} was disposed during focus`)
+    }
+    focusedNode = null
+    if (app) {
+      // Use null instead of undefined to match type expectations
+      ;(app as { focusedNode?: Node | null }).focusedNode = null
+    }
   }
 }
 

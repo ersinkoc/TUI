@@ -171,6 +171,38 @@ export function mousePlugin(options: MousePluginOptions = {}): Plugin {
   // Track mouse state for hover detection
   let lastHoveredNode: BaseNode | null = null
 
+  // Hover state timeout: clear hover if no mouse events for 5 seconds
+  // This handles cases where mouse leaves terminal without sending a leave event
+  const HOVER_TIMEOUT = 5000
+  let hoverTimeoutTimer: ReturnType<typeof setTimeout> | null = null
+
+  /**
+   * Clear hover state safely.
+   */
+  function clearHoverState(): void {
+    if (lastHoveredNode && !lastHoveredNode._disposed && hasMouseLeaveHandler(lastHoveredNode)) {
+      try {
+        lastHoveredNode.onMouseLeave()
+      } catch (error) {
+        console.error('[mouse] Error in onMouseLeave during clear:', error)
+      }
+    }
+    lastHoveredNode = null
+  }
+
+  /**
+   * Schedule hover state cleanup after timeout.
+   */
+  function scheduleHoverCleanup(): void {
+    if (hoverTimeoutTimer) {
+      clearTimeout(hoverTimeoutTimer)
+    }
+    hoverTimeoutTimer = setTimeout(() => {
+      clearHoverState()
+      hoverTimeoutTimer = null
+    }, HOVER_TIMEOUT)
+  }
+
   /**
    * Handle incoming mouse data.
    */
@@ -178,6 +210,9 @@ export function mousePlugin(options: MousePluginOptions = {}): Plugin {
     if (!enabled || !app) return
 
     const events = mouseParser.parse(data)
+
+    // Reset hover timeout on any mouse activity
+    scheduleHoverCleanup()
 
     for (const event of events) {
       // Validate coordinates are within valid bounds (non-negative)
@@ -303,6 +338,17 @@ export function mousePlugin(options: MousePluginOptions = {}): Plugin {
           if (enabled) {
             enabled = false
             process.stdout.write(disableMouse())
+
+            // Clear hover state when disabling mouse tracking
+            if (lastHoveredNode && !lastHoveredNode._disposed && hasMouseLeaveHandler(lastHoveredNode)) {
+              try {
+                lastHoveredNode.onMouseLeave()
+              } catch (error) {
+                console.error('[mouse] Error in onMouseLeave during disable:', error)
+              }
+            }
+            lastHoveredNode = null
+
             if (debug) {
               console.error('[mouse] tracking disabled')
             }
@@ -334,9 +380,26 @@ export function mousePlugin(options: MousePluginOptions = {}): Plugin {
     },
 
     destroy(): void {
+      // Clear hover timeout
+      if (hoverTimeoutTimer) {
+        clearTimeout(hoverTimeoutTimer)
+        hoverTimeoutTimer = null
+      }
+
+      // Clear hover state on destroy
+      if (lastHoveredNode && !lastHoveredNode._disposed && hasMouseLeaveHandler(lastHoveredNode)) {
+        try {
+          lastHoveredNode.onMouseLeave()
+        } catch (error) {
+          console.error('[mouse] Error in onMouseLeave during destroy:', error)
+        }
+      }
+      lastHoveredNode = null
+
       // Disable mouse tracking
       if (enabled) {
         process.stdout.write(disableMouse())
+        enabled = false
       }
 
       // Clean up stdin listener
@@ -346,7 +409,6 @@ export function mousePlugin(options: MousePluginOptions = {}): Plugin {
       }
 
       handlers.clear()
-      lastHoveredNode = null
       app = null
     }
   }

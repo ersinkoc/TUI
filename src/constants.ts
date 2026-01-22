@@ -401,17 +401,17 @@ export const ROUTER_GUARD_TIMEOUT = 5000
  * Maximum layout recursion depth to prevent stack overflow.
  *
  * Prevents stack overflow from deeply nested or circular container structures.
- * Typical UI layouts rarely exceed 20 levels of nesting. This limit of 100
- * provides a large safety margin while preventing infinite loops.
+ * Typical UI layouts rarely exceed 20 levels of nesting. This limit provides
+ * a large safety margin while preventing infinite loops.
  *
  * If you hit this limit, consider:
  * - Flattening your UI structure
  * - Using virtual scrolling for large lists
  * - Checking for circular parent references
  *
- * @default 100
+ * @default 200
  */
-export const LAYOUT_MAX_DEPTH = 100
+export const LAYOUT_MAX_DEPTH = 200
 
 /**
  * Maximum tree traversal depth to prevent stack overflow.
